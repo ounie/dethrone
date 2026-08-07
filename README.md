@@ -55,7 +55,9 @@ Four shapes, in ascending order of what they ask you to trust. **The custody que
 
 ### A — local
 
-`pnpm dev` binds `127.0.0.1:3939`, and the loopback binding is load-bearing rather than decorative: a dev server on `0.0.0.0` is a spending endpoint for everyone on the coffee-shop wifi. That is why the flag is in the `dev` script and not in this README — a reader who types `pnpm dev` gets the safe thing, and a reader who runs `next dev` with a key set is refused at boot and told why.
+`pnpm dev` binds `127.0.0.1:3939`, and the loopback binding is load-bearing rather than decorative: a dev server on `0.0.0.0` is a spending endpoint for everyone on the coffee-shop wifi. That is why the flag lives in the `dev` script and not in this README — a reader who types `pnpm dev` gets the safe thing without having to know why.
+
+**The bind is enforced per request, not at boot**, and the difference is worth knowing. `instrumentation.ts` runs in a child process whose `argv` does not carry the `--hostname` you passed, so a boot-time check usually cannot see the bind at all; treating that silence as "bound to everything" would refuse to start on the documented, safe path. So when the bind is unknown the console warns, and `/api/act` refuses paid commands whose `Host` is not loopback — reading the address a caller really used, which also catches a tunnel, a reverse proxy, and a `--hostname` overridden after boot. The `dev` script exports `HOST=127.0.0.1` alongside the flag so the boot check can confirm it too.
 
 ### B — Vercel, protected, single operator
 

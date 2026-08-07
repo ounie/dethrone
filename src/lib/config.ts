@@ -45,15 +45,22 @@ export interface ConsoleConfig {
 let cached: ConsoleConfig | null = null;
 
 /**
- * The host this server is bound to, for assertion 3.
+ * The host this server is bound to, for assertion 3 — or `null` when it cannot
+ * be determined, which is the common case and must not be mistaken for
+ * "bound to everything".
  *
- * There is no portable API for "what did I bind to", so this reads the flag the
- * operator actually passed, then the conventional env vars. Next's dev server
- * binds `0.0.0.0` by default, so **absent an explicit flag this resolves to
- * null and the assertion fails** — which is correct, and is exactly why
- * `package.json`'s `dev` script hard-codes `--hostname 127.0.0.1`. A reader who
- * types `pnpm dev` gets the safe thing; a reader who types `next dev` with a
- * key gets refused and told why.
+ * There is no portable API for "what did I bind to". `argv` is checked first
+ * and works for a directly-invoked server, but **Next's `instrumentation.ts`
+ * runs in a child process** (`start-server.js`) whose argv is
+ * `["node", "start-server.js"]` — the `--hostname` the operator passed to the
+ * CLI is not visible there at all. So the env vars are the load-bearing path,
+ * and `package.json`'s `dev` script sets `HOST=127.0.0.1` alongside
+ * `--hostname 127.0.0.1` for exactly that reason: one does the binding, the
+ * other makes it checkable from the process that does the checking.
+ *
+ * When this returns null the assertion warns rather than refuses. The
+ * enforcement lives in `paidCommandsAllowedFrom` below, which reads the Host of
+ * a real request and is strictly more accurate.
  */
 function bootHost(): string | null {
   const argv = process.argv;
@@ -122,13 +129,13 @@ export function config(): ConsoleConfig {
 }
 
 /**
- * Assertion 3's request half.
+ * Assertion 3's request half — and the half that actually protects anyone.
  *
- * The boot check can only see a bind address where there is one, which is
- * local. On a platform the operator does not administer, the host that matters
- * is the one on the request — so every paid command re-derives it. This catches
- * the tunnel, the reverse proxy, and the `--hostname` that was overridden after
- * boot.
+ * The boot check can only speak about a bind address it can see, which is often
+ * none (see `bootHost`). The host that matters is the one a caller really used,
+ * so every paid command re-derives it from the request. This catches the
+ * tunnel, the reverse proxy, and the `--hostname` overridden after boot — none
+ * of which a boot-time check could ever have seen.
  */
 export function paidCommandsAllowedFrom(requestHost: string | null): boolean {
   const cfg = config();

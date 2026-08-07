@@ -9,9 +9,9 @@
   },
   "packageManager": "pnpm@10.12.4",
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1 --port 3939",
+    "dev": "HOST=127.0.0.1 next dev --hostname 127.0.0.1 --port 3939",
     "build": "tsx scripts/assert-config.ts && next build",
-    "start": "next start --hostname 127.0.0.1 --port 3939",
+    "start": "HOST=127.0.0.1 next start --hostname 127.0.0.1 --port 3939",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

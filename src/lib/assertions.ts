@@ -135,15 +135,42 @@ export function assertConsoleConfig(env: EnvLike, host: string | null): Finding[
 
   // ── 3. A key off loopback needs an explicit acknowledgement ───────────────
   //
-  // Only checkable where there IS a bind address — which is local. On Vercel the
-  // process has no bind address to inspect, so the request half of this rule
-  // lives in /api/act, which re-derives the host per request. Splitting it is
-  // the honest thing; pretending one check covers both is not.
-  if (hasKey && !onVercel && !isLoopbackHost(host) && !isTruthyFlag(env.CONSOLE_ALLOW_REMOTE)) {
-    fail(
-      "CONSOLE_NOT_LOOPBACK",
-      `A key is set and this server is bound to ${host ?? "all interfaces"}, not loopback. A dev server on 0.0.0.0 is a spending endpoint for everyone on the network. Run with --hostname 127.0.0.1 (the bundled "dev" script already does), or set CONSOLE_ALLOW_REMOTE=true if you meant it.`,
-    );
+  // Three states, not two, and conflating the last two is a bug this code
+  // already shipped once:
+  //
+  //   known loopback     → fine
+  //   known non-loopback → refuse
+  //   UNKNOWN            → warn, and let the per-request gate do the work
+  //
+  // The unknown case is the common one and it is not recoverable here. Next's
+  // `instrumentation.ts` runs in a CHILD process (`start-server.js`) whose
+  // argv is `["node", "start-server.js"]` — the `--hostname` the operator
+  // passed to the CLI is simply not visible, and HOST/HOSTNAME are unset
+  // unless someone exported them. Treating that silence as "bound to
+  // everything" made `pnpm dev` with a key set impossible to start.
+  //
+  // Refusing on an unknown bind is not the safe default it looks like, because
+  // this check was never the thing protecting anyone. `/api/act` re-derives
+  // the host from the actual request and refuses paid commands off loopback
+  // there — which is strictly more accurate: it reads the Host that a caller
+  // really used, so it also catches a tunnel, a reverse proxy, and a
+  // `--hostname` overridden after boot. This assertion is an early, friendlier
+  // failure for the case it can prove, and nothing more.
+  if (hasKey && !onVercel && !isTruthyFlag(env.CONSOLE_ALLOW_REMOTE)) {
+    const declared = host !== null && host !== undefined && host.trim() !== "";
+    if (declared && isLoopbackHost(host)) {
+      // Known loopback. Nothing to say.
+    } else if (declared) {
+      fail(
+        "CONSOLE_NOT_LOOPBACK",
+        `A key is set and this server is bound to ${host}, not loopback. A dev server on 0.0.0.0 is a spending endpoint for everyone on the network. Run with --hostname 127.0.0.1 (the bundled "dev" script already does), or set CONSOLE_ALLOW_REMOTE=true if you meant it.`,
+      );
+    } else {
+      warn(
+        "CONSOLE_BIND_UNKNOWN",
+        'This process cannot see what address it is bound to, so the bind could not be checked at boot. Paid commands are still refused off loopback per request, using the Host header the caller actually sent. To check it here too, export HOST=127.0.0.1 (the bundled "dev" script already does).',
+      );
+    }
   }
 
   // ── 4. A key on a preview ─────────────────────────────────────────────────

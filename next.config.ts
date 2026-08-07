@@ -11,6 +11,12 @@ import type { NextConfig } from "next";
  * `src/instrumentation.ts`, which gates the running server.
  */
 const nextConfig: NextConfig = {
+  // Pin the workspace root to this directory. Without it Next walks upwards,
+  // finds whatever lockfile happens to be in a parent (a stray
+  // ~/package-lock.json is enough), and infers a root outside the project —
+  // which it then warns about on every start.
+  turbopack: { root: import.meta.dirname },
+
   // The console renders live money. A cached seat read showing a stale pot is a
   // wrong number, and a wrong number is worse than a slow one (PRD §14).
   reactStrictMode: true,

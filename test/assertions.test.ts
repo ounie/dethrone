@@ -91,8 +91,41 @@ describe("3 — a key off loopback needs an explicit acknowledgement", () => {
     expect(codes({ DETHRONE_PRIVATE_KEY: KEY }, "0.0.0.0")).toContain("CONSOLE_NOT_LOOPBACK");
   });
 
-  it("refuses a key with no resolvable bind address (next dev's default)", () => {
-    expect(codes({ DETHRONE_PRIVATE_KEY: KEY }, null)).toContain("CONSOLE_NOT_LOOPBACK");
+  it.each(["192.168.1.9", "0.0.0.0:3939", "example.com"])(
+    "refuses a key bound to %s",
+    (h) => {
+      expect(codes({ DETHRONE_PRIVATE_KEY: KEY }, h)).toContain("CONSOLE_NOT_LOOPBACK");
+    },
+  );
+
+  /**
+   * The regression this file exists for.
+   *
+   * `instrumentation.ts` runs in a child process whose argv does not carry the
+   * `--hostname` the operator passed, so the bind is UNKNOWN on the normal dev
+   * path. Refusing on unknown made `pnpm dev` with a key set impossible to
+   * start — a hard failure on the documented, safe path.
+   *
+   * Unknown is a warning. The per-request gate in `/api/act` is the
+   * enforcement, and it reads a Host that actually exists.
+   */
+  it("does NOT refuse when the bind cannot be determined", () => {
+    expect(codes({ DETHRONE_PRIVATE_KEY: KEY }, null)).toEqual([]);
+  });
+
+  it("warns instead, naming where the real check happens", () => {
+    const found = assertConsoleConfig({ DETHRONE_PRIVATE_KEY: KEY }, null);
+    const bind = found.find((f) => f.code === "CONSOLE_BIND_UNKNOWN");
+    expect(bind?.level).toBe("warn");
+    expect(bind?.message).toMatch(/per request/i);
+  });
+
+  it("is silent once HOST declares loopback, as the dev script does", () => {
+    expect(assertConsoleConfig({ DETHRONE_PRIVATE_KEY: KEY }, "127.0.0.1")).toEqual([]);
+  });
+
+  it("does not warn about an unknown bind with no key — nothing can spend", () => {
+    expect(warnings({}, null)).toEqual([]);
   });
 
   it("allows it once the operator says so", () => {
