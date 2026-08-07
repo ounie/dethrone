@@ -1,0 +1,713 @@
+/*
+ * Dethrone Console — the ember arena, as an instrument panel.
+ *
+ * The palette is the arena's, ported from the design system so the console
+ * looks like the thing it operates rather than like a generic API client:
+ *
+ *   ember (#dd6a1c) is the ONLY accent — it marks money and nothing else.
+ *   gold (#d0a44f) is a material, not a second accent: rules, frames, crests.
+ *   parchment is text. Never pure white.
+ *   ink is surface. Warm near-black, never a cool grey.
+ *   teal marks the lane where NOTHING IS AT STAKE.
+ *
+ * That last line is why the rail can be honest without importing a rule. The
+ * console groups commands by cost, because cost is the only access control in
+ * this system — and the design system already spends teal on exactly the
+ * meaning "no stake". Free reads are teal; anything that settles USDC is ember.
+ * The colour is the whole claim, and it is a claim the console is entitled to
+ * make.
+ *
+ * Source of truth for these values: apps/design/tokens/*.css.
+ */
+
+:root {
+  /* Ink — warm near-black arena dark */
+  --ink-1000: #050303;
+  --ink-950: #080606;
+  --ink-900: #0b0808;
+  --ink-850: #100c0b;
+  --ink-800: #15100e;
+  --ink-750: #1a1412;
+  --ink-700: #221a16;
+  --ink-600: #2c221c;
+  --ink-500: #3a2c23;
+
+  /* Ember — the only accent */
+  --ember-100: #fbe3cb;
+  --ember-200: #f6c294;
+  --ember-300: #f0a05f;
+  --ember-400: #e8853a;
+  --ember-500: #dd6a1c;
+  --ember-600: #c05412;
+  --ember-700: #93400e;
+  --ember-800: #5e290a;
+  --ember-900: #331706;
+
+  /* Gold — a material: hairline ceremony rules, frames */
+  --gold-300: #e0c07a;
+  --gold-400: #d0a44f;
+  --gold-500: #b78737;
+  --gold-700: #5f4318;
+
+  /* Parchment — display and body text */
+  --parchment-100: #f3ece0;
+  --parchment-200: #e2d8c8;
+  --parchment-300: #c6bcab;
+  --parchment-400: #9d9387;
+  --parchment-500: #7b7268;
+  --parchment-600: #59524a;
+
+  /* Semantic state */
+  --verdict-win: #4ea373;
+  --verdict-loss: #b8342a;
+  --verdict-loss-fg: #e0796d;
+  --awaiting: #e0912a;
+  --frozen: #5f8fa8;
+  --teal-500: #3c8d84;
+  --teal-400: #55a89d;
+  --teal-600: #2f6f68;
+
+  /* Roles */
+  --bg-page: var(--ink-950);
+  --bg-panel: var(--ink-850);
+  --bg-inset: var(--ink-1000);
+  --bg-raised: var(--ink-800);
+  --border-hairline: var(--ink-700);
+  --border-panel: var(--ink-600);
+  --border-gilt: rgba(208, 164, 79, 0.34);
+  --border-ember: rgba(221, 106, 28, 0.55);
+  --border-teal: rgba(60, 141, 132, 0.45);
+  --text-display: var(--parchment-100);
+  --text-body: var(--parchment-200);
+  --text-muted: var(--parchment-400);
+  --text-faint: var(--parchment-500);
+  --focus-ring: rgba(232, 133, 58, 0.55);
+
+  /* Spacing + radii */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 40px;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --header-h: 66px;
+
+  /* Effects */
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.02) inset, 0 8px 24px rgba(0, 0, 0, 0.45);
+  --glow-ember-sm: 0 0 0 1px rgba(221, 106, 28, 0.25);
+  --ease-standard: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-page);
+  color: var(--text-body);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(221, 106, 28, 0.35);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* The engraved display face. Uppercase, tracked out — the arena's own voice. */
+.display {
+  font-family: var(--font-cinzel), "Trajan Pro", Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text-display);
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.mono {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Shell ────────────────────────────────────────────────────────────────── */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-hairline);
+  background: rgba(8, 6, 6, 0.92);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.masthead-lockup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-right: auto;
+}
+
+.masthead-lockup img {
+  height: 28px;
+  width: auto;
+}
+
+.wordmark {
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fact dt {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.fact dd {
+  margin: 0;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 34ch;
+}
+
+.fact dd[data-tone="readonly"] {
+  color: var(--frozen);
+}
+.fact dd[data-tone="ok"] {
+  color: var(--teal-400);
+}
+.fact dd[data-tone="warn"] {
+  color: var(--awaiting);
+}
+.fact dd[data-tone="bad"] {
+  color: var(--verdict-loss-fg);
+}
+
+/* ── Three panes ──────────────────────────────────────────────────────────── */
+
+.console {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr) minmax(0, 1.05fr);
+  align-items: start;
+  flex: 1;
+  min-height: 0;
+}
+
+.rail {
+  border-right: 1px solid var(--border-hairline);
+  padding: var(--space-4) var(--space-3) var(--space-8);
+  overflow-y: auto;
+  max-height: calc(100vh - var(--header-h));
+  position: sticky;
+  top: var(--header-h);
+}
+
+.rail-group + .rail-group {
+  margin-top: var(--space-5);
+}
+
+.rail-group h2 {
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-2);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.cmd {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 7px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-body);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.cmd:hover:not(:disabled) {
+  background: var(--ink-800);
+}
+
+.cmd[aria-current="true"] {
+  background: var(--ink-750);
+  border-color: var(--border-panel);
+  color: var(--text-display);
+}
+
+.cmd:disabled {
+  cursor: not-allowed;
+  color: var(--text-faint);
+}
+
+.cmd-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The price tag IS the access-control statement. Teal: nothing at stake.
+   Ember: this settles USDC the moment the handler succeeds. */
+.tag {
+  flex-shrink: 0;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+}
+
+.tag[data-tier="free"],
+.tag[data-tier="signed"] {
+  color: var(--teal-400);
+  background: rgba(60, 141, 132, 0.08);
+  border-color: var(--border-teal);
+}
+
+.tag[data-tier="paid"] {
+  color: var(--ember-300);
+  background: rgba(221, 106, 28, 0.1);
+  border-color: var(--border-ember);
+}
+
+.cmd:disabled .tag {
+  opacity: 0.45;
+}
+
+.rail-reason {
+  padding: 0 var(--space-2) var(--space-2) calc(var(--space-2) + 4px);
+  margin: -2px 0 var(--space-1);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  border-left: 1px solid var(--border-hairline);
+}
+
+/* ── Command pane ─────────────────────────────────────────────────────────── */
+
+.pane {
+  padding: var(--space-5);
+  min-width: 0;
+}
+
+.pane + .pane {
+  border-left: 1px solid var(--border-hairline);
+}
+
+.route {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.method {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--ink-750);
+  border: 1px solid var(--border-panel);
+  color: var(--text-display);
+}
+
+.route code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--ember-200);
+  word-break: break-all;
+}
+
+.note {
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border-gilt);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+.field {
+  display: block;
+  margin-bottom: var(--space-3);
+  max-width: 42ch;
+}
+
+.field > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.field input,
+.field select {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-display);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: var(--border-ember);
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.run {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 9px 16px;
+  border: 1px solid var(--border-teal);
+  border-radius: var(--radius-sm);
+  background: rgba(60, 141, 132, 0.12);
+  color: var(--teal-400);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease-standard);
+}
+
+.run:hover:not(:disabled) {
+  background: rgba(60, 141, 132, 0.2);
+}
+
+.run[data-paid="true"] {
+  border-color: var(--border-ember);
+  background: rgba(221, 106, 28, 0.14);
+  color: var(--ember-200);
+  box-shadow: var(--glow-ember-sm);
+}
+
+.run[data-paid="true"]:hover:not(:disabled) {
+  background: rgba(221, 106, 28, 0.22);
+}
+
+.run:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.disabled-reason {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-left: 2px solid var(--frozen);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+/* ── Response pane ────────────────────────────────────────────────────────── */
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.meta dt,
+.meta .k {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.meta .v {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--text-display);
+}
+
+.meta .v[data-tone="ok"] {
+  color: var(--verdict-win);
+}
+.meta .v[data-tone="bad"] {
+  color: var(--verdict-loss-fg);
+}
+.meta .v[data-tone="ember"] {
+  color: var(--ember-300);
+}
+.meta .v[data-tone="muted"] {
+  color: var(--text-faint);
+}
+
+.code-banner {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-left: 2px solid var(--verdict-loss);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+}
+
+.code-banner .code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--verdict-loss-fg);
+}
+
+.code-banner p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+.out {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--parchment-300);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  max-height: 52vh;
+}
+
+.log {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-hairline);
+  color: var(--text-faint);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  max-height: 22vh;
+  overflow-y: auto;
+}
+
+/* ── Confirmation ─────────────────────────────────────────────────────────── */
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgba(5, 3, 3, 0.78);
+  backdrop-filter: blur(14px);
+}
+
+.confirm {
+  width: min(460px, 100%);
+  padding: var(--space-5);
+  border: 1px solid var(--border-gilt);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.confirm h2 {
+  margin: 0 0 var(--space-3);
+  font-size: 19px;
+}
+
+.confirm dl {
+  margin: 0 0 var(--space-4);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+}
+
+.confirm dt {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  align-self: center;
+}
+
+.confirm dd {
+  margin: 0;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--text-display);
+  word-break: break-all;
+}
+
+.confirm dd[data-amount="true"] {
+  font-size: 20px;
+  color: var(--ember-300);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.btn-quiet {
+  padding: 8px 14px;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn-quiet:hover {
+  color: var(--text-display);
+  border-color: var(--border-gilt);
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+
+.footnote {
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border-hairline);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.footnote a {
+  color: var(--ember-300);
+}
+
+/* ── Responsive: one column at 375px, nothing hidden ──────────────────────── */
+
+@media (max-width: 1100px) {
+  .console {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+  .pane-response {
+    grid-column: 1 / -1;
+    border-left: none;
+    border-top: 1px solid var(--border-hairline);
+  }
+}
+
+@media (max-width: 720px) {
+  .console {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rail {
+    position: static;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+  .pane + .pane {
+    border-left: none;
+  }
+  .pane-response {
+    border-top: 1px solid var(--border-hairline);
+  }
+  .fact dd {
+    max-width: 24ch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

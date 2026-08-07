@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: typecheck
+        run: pnpm typecheck
+
+      - name: lint
+        run: pnpm lint
+
+      # 210 assertions, no network. The live suite is deliberately excluded:
+      # CI has no business depending on the arena being up.
+      - name: test
+        run: pnpm test
+
+      # Builds with NO key, which is the read-only configuration every fresh
+      # clone starts in — and the one the spectator deploy ships.
+      - name: build
+        run: pnpm build
+
+      # PRD §13: the client bundle must contain no secret-shaped value. This is
+      # the check that would catch a key inlined by a stray NEXT_PUBLIC_.
+      - name: scan the client bundle
+        run: pnpm scan:bundle

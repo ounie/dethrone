@@ -1,0 +1,45 @@
+{
+  "name": "dethrone-console",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A single-tenant operator console for the Dethrone arena. One wallet, held server-side, that signs and pays on your behalf.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.12.4",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 --port 3939",
+    "build": "tsx scripts/assert-config.ts && next build",
+    "start": "next start --hostname 127.0.0.1 --port 3939",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:live": "DETHRONE_LIVE=1 vitest run --config vitest.live.config.mts",
+    "assert:config": "tsx scripts/assert-config.ts",
+    "canon:sync": "tsx scripts/sync-canon-routes.ts",
+    "scan:bundle": "tsx scripts/scan-bundle.ts"
+  },
+  "dependencies": {
+    "@x402/core": "^2.20.0",
+    "@x402/evm": "^2.20.0",
+    "@x402/fetch": "^2.20.0",
+    "next": "16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1",
+    "viem": "^2.55.10",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@upstash/redis": "^1.35.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "tsx": "^4.23.1",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
+  }
+}

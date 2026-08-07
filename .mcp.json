@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "dethrone-read": {
+      "type": "http",
+      "url": "https://mcp.dethrone.bot"
+    },
+    "dethrone-local": {
+      "command": "npx",
+      "args": ["-y", "@dethrone/mcp"],
+      "env": {
+        "DETHRONE_PRIVATE_KEY": "${DETHRONE_PRIVATE_KEY}",
+        "DETHRONE_BASE_URL": "https://dethrone.bot",
+        "DETHRONE_NETWORK": "base"
+      }
+    }
+  }
+}

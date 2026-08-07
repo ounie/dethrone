@@ -1,0 +1,529 @@
+{
+  "$comment": "GENERATED — do not edit by hand. Regenerate with `pnpm canon:sync <path-to-apps/web>`. This records the arena's route tree at the commit below; it is a checked-in snapshot, not a source of truth. test/live/canon.live.test.ts is what catches a route deleted after this was taken.",
+  "source": "apps/web/src/app/api/**/route.ts",
+  "commit": "65a0865c4c199cfab260ad03a3dcde012d27c397",
+  "routeCount": 47,
+  "routes": [
+    {
+      "path": "/api/agent/[id]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "TITLES_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/arena",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/arenas",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/asset/[...key]",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/census",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": true,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/challenge",
+      "methods": [
+        "POST"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/character/[id]",
+      "methods": [
+        "GET",
+        "DELETE"
+      ],
+      "flag": "FORGE_FIRST_ENABLED",
+      "signScope": "character:${characterId}",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/creator/[agent]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "UNDERCARD_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/cron/sweep",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": true
+    },
+    {
+      "path": "/api/cron/tick",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": true
+    },
+    {
+      "path": "/api/derive/[address]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "HOUSES_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/duel",
+      "methods": [
+        "POST"
+      ],
+      "flag": "DUELS_ENABLED",
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/duel/[id]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "DUELS_ENABLED",
+      "signScope": "duel:${duelId}",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/duel/[id]/cancel",
+      "methods": [
+        "POST"
+      ],
+      "flag": "DUELS_ENABLED",
+      "signScope": "duel:${duelId}",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/duel/[id]/take",
+      "methods": [
+        "POST"
+      ],
+      "flag": "DUELS_ENABLED",
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/duels/pool",
+      "methods": [
+        "GET"
+      ],
+      "flag": "DUELS_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/exhibition",
+      "methods": [
+        "POST"
+      ],
+      "flag": "UNDERCARD_ENABLED",
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/fighters",
+      "methods": [
+        "GET"
+      ],
+      "flag": "UNDERCARD_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/forge",
+      "methods": [
+        "POST"
+      ],
+      "flag": "FORGE_FIRST_ENABLED",
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/forge/validate",
+      "methods": [
+        "POST"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/form",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/genesis",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "flag": "LORDSHIPS_ENABLED",
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/hall-of-fame",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/heir/[id]",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/heir/[id]/buy",
+      "methods": [
+        "POST"
+      ],
+      "flag": "HEIR_MARKET_ENABLED",
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/heir/[id]/claim",
+      "methods": [
+        "POST"
+      ],
+      "flag": "FORGE_FIRST_ENABLED",
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/heir/[id]/list",
+      "methods": [
+        "POST"
+      ],
+      "flag": "HEIR_MARKET_ENABLED",
+      "signScope": "heir:${heirId}",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/house/[slug]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "HOUSES_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/houses",
+      "methods": [
+        "GET"
+      ],
+      "flag": "HOUSES_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/jobs/run",
+      "methods": [
+        "POST"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": true
+    },
+    {
+      "path": "/api/leaderboard",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/lordship/[id]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "LORDSHIPS_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/lordship/[id]/buy",
+      "methods": [
+        "POST"
+      ],
+      "flag": "LORDSHIPS_ENABLED",
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/lordship/[id]/list",
+      "methods": [
+        "POST"
+      ],
+      "flag": "LORDSHIPS_ENABLED",
+      "signScope": "lordship:${lordshipId}",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/lordships",
+      "methods": [
+        "GET"
+      ],
+      "flag": "LORDSHIPS_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/market",
+      "methods": [
+        "GET"
+      ],
+      "flag": "HEIR_MARKET_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/match/[id]",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": "match:${matchId}",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/match/[id]/film",
+      "methods": [
+        "POST"
+      ],
+      "flag": "FILM_ORDERS_ENABLED",
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/matches",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/mcp",
+      "methods": [
+        "GET",
+        "POST",
+        "DELETE"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/pairing/[...key]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "UNDERCARD_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/queue",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/rules",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/seat",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/stable",
+      "methods": [
+        "GET"
+      ],
+      "flag": "FORGE_FIRST_ENABLED",
+      "signScope": "stable",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/titles",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/treasury",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": true,
+      "cronOnly": false
+    }
+  ]
+}
