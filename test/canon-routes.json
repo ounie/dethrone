@@ -1,7 +1,7 @@
 {
   "$comment": "GENERATED — do not edit by hand. Regenerate with `pnpm canon:sync <path-to-apps/web>`. This records the arena's route tree at the commit below; it is a checked-in snapshot, not a source of truth. test/live/canon.live.test.ts is what catches a route deleted after this was taken.",
   "source": "apps/web/src/app/api/**/route.ts",
-  "commit": "133d3ea98e7c48ba2b6328b9f744a6cc4c08fa91",
+  "commit": "36b61f2937bd8925d239fb627bb454dab91aa76e",
   "routeCount": 49,
   "routes": [
     {
