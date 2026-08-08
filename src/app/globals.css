@@ -422,6 +422,66 @@ code {
   color: var(--text-faint);
 }
 
+/* ── Operator wallet card ────────────────────────────────────────────────── */
+
+.wallet {
+  margin-top: var(--s2);
+  padding: 9px 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-gilt);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--bevel-stone-raised);
+}
+
+.wallet-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.wallet-derived {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--parchment-600);
+}
+
+.wallet-address {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+/* Shown in FULL, not middle-elided. The question this answers is "is the
+   console signing as the wallet I think it is?", and a truncated address
+   cannot answer it. It shrinks with the viewport rather than being cut. */
+.wallet-address > .num {
+  flex: 1;
+  min-width: 0;
+  font-size: clamp(10.5px, 1.05vw, 13px);
+  color: var(--text-display);
+  overflow-wrap: anywhere;
+}
+
+.wallet-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 3px 0 0;
+  font-size: 11.5px;
+}
+
+.wallet-balance strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gold-300);
+}
+
+.wallet-unit {
+  color: var(--text-faint);
+}
+
 /* ── Ceiling meter ────────────────────────────────────────────────────────── */
 
 .masthead-meter {

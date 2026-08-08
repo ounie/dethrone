@@ -1,6 +1,7 @@
 import Console from "@/components/console";
 import type { SeatSnapshot } from "@/components/seat-state";
 import * as arena from "@/lib/arena";
+import { explorerAddressUrl, networkKey, usdcBalance } from "@/lib/chain";
 import type { Capabilities, Capability } from "@/lib/capability";
 import { COMMANDS, type Command } from "@/lib/commands";
 import { config } from "@/lib/config";
@@ -106,6 +107,10 @@ export default async function Page() {
 
   const ledger = await spendStore(me).read();
 
+  // A read of the chain, not of the canon: one `view` call, no key, no
+  // signature. `null` when the RPC is unreachable — the console keeps working.
+  const balance = me ? await usdcBalance(me) : null;
+
   return (
     <div className="shell">
       {/* The address is public. The key never crosses this boundary. */}
@@ -121,6 +126,16 @@ export default async function Page() {
           capCents: ledger?.cap ?? cfg.maxSpendCents,
           reason: cfg.ceilingDisabledReason,
         }}
+        wallet={
+          me
+            ? {
+                address: me,
+                usdc: balance?.usdc ?? null,
+                network: balance?.network ?? networkKey(),
+                explorerUrl: explorerAddressUrl(me),
+              }
+            : null
+        }
         seat={snapshot(seatRead.result?.body, reachable, new Date().toISOString())}
       />
 

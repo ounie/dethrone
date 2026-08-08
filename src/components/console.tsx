@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import CommandPane from "./command-pane";
 import ConfirmDialog, { type ConfirmRequest } from "./confirm-dialog";
-import Masthead, { type Ceiling } from "./masthead";
+import Masthead, { type Ceiling, type Wallet } from "./masthead";
 import Rail from "./rail";
 import ResponseLog, { type LogRow } from "./response-log";
 import ResponsePane, { type Envelope } from "./response-pane";
@@ -34,6 +34,7 @@ export default function Console({
   forgeNote,
   stakeRange,
   ceiling,
+  wallet,
   seat,
 }: {
   operator: string | null;
@@ -42,6 +43,7 @@ export default function Console({
   forgeNote: string | null;
   stakeRange: StakeRange;
   ceiling: Ceiling;
+  wallet: Wallet | null;
   seat: SeatSnapshot;
 }) {
   const [active, setActive] = useState<Command>(FIRST);
@@ -135,6 +137,7 @@ export default function Console({
         operator={operator}
         reachable={seat.reachable}
         ceiling={live}
+        wallet={wallet}
       />
 
       <div className="console">

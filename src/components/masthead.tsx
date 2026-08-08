@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import Icon from "./icon";
-import { money, pct, shortAddress } from "@/lib/format";
+import { money, pct } from "@/lib/format";
 
 /**
  * The masthead: who this console is pointed at, who it signs as, and what it
@@ -62,16 +62,79 @@ export interface Ceiling {
   reason?: string;
 }
 
+export interface Wallet {
+  /** The address `DETHRONE_PRIVATE_KEY` derives to. Public; the key is not. */
+  address: string;
+  /** Formatted USDC, or null when the RPC could not be reached. */
+  usdc: string | null;
+  network: string;
+  explorerUrl: string;
+}
+
+/**
+ * The operator's wallet.
+ *
+ * Shown in full rather than truncated, because the question this answers is
+ * "is the console signing as the wallet I think it is?" — and a middle-elided
+ * address cannot answer that. The three things beside it are the three things
+ * an operator actually needs: whether it can pay, where to go and look, and a
+ * way to copy it without selecting text.
+ *
+ * The address is derived from the key at boot and is public. **The key itself
+ * never crosses this boundary** — this component receives a string somebody
+ * else computed and has no way to ask for anything more.
+ */
+function WalletCard({ wallet }: { wallet: Wallet }) {
+  return (
+    <div className="wallet">
+      <div className="wallet-head">
+        <span className="chip-label">Operator wallet</span>
+        <span className="wallet-derived">derived from DETHRONE_PRIVATE_KEY</span>
+      </div>
+
+      <div className="wallet-address">
+        <span className="num" title={wallet.address}>
+          {wallet.address}
+        </span>
+        <CopyButton value={wallet.address} what="operator address" />
+        <a
+          className="icon-btn"
+          href={wallet.explorerUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label="View this wallet on the block explorer"
+          title="View on the block explorer"
+        >
+          <Icon name="external-link" size={13} />
+        </a>
+      </div>
+
+      <p className="wallet-balance">
+        {wallet.usdc === null ? (
+          <span className="muted">Balance unavailable — the RPC could not be reached.</span>
+        ) : (
+          <>
+            <strong className="num">{wallet.usdc}</strong>
+            <span className="wallet-unit">USDC on {wallet.network}</span>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export default function Masthead({
   baseUrl,
   operator,
   reachable,
   ceiling,
+  wallet,
 }: {
   baseUrl: string;
   operator: string | null;
   reachable: boolean;
   ceiling: Ceiling;
+  wallet: Wallet | null;
 }) {
   const remaining = Math.max(0, ceiling.capCents - ceiling.spentCents);
   const used = pct(ceiling.spentCents, ceiling.capCents);
@@ -96,21 +159,14 @@ export default function Masthead({
             {reachable ? "reachable" : "unreachable"}
           </Chip>
 
-          <Chip
-            icon={operator ? "wallet" : "lock"}
-            label="Operator address"
-            tone={operator ? undefined : "muted"}
-          >
-            {operator ? (
-              <>
-                <span title={operator}>{shortAddress(operator)}</span>
-                <CopyButton value={operator} what="operator address" />
-              </>
-            ) : (
-              "no key"
-            )}
-          </Chip>
+          {!operator && (
+            <Chip icon="lock" label="Operator wallet" tone="muted">
+              no key set
+            </Chip>
+          )}
         </div>
+
+        {wallet && <WalletCard wallet={wallet} />}
       </div>
 
       <div className="masthead-meter">

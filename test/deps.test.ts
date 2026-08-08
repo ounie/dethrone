@@ -60,6 +60,7 @@ describe("server-only marks every module that sees a key or a network", () => {
     "lib/config.ts",
     "lib/rules.ts",
     "lib/spend.ts",
+    "lib/chain.ts",
   ];
 
   for (const file of mustBeServerOnly) {
