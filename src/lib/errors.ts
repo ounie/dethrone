@@ -49,6 +49,36 @@ export const CONSOLE_ERROR_CODES = [
   "CONSOLE_PAYMENT_INFLIGHT",
   /** DNS, connect or timeout. Nothing was signed and nothing settled. */
   "CONSOLE_TRANSPORT",
+
+  // ── The agent ─────────────────────────────────────────────────────────────
+  //
+  // Every code below means the *chat* stopped something. None of them can be
+  // returned by a tool call that reached the arena — a tool call that got that
+  // far carries the arena's own answer, or one of the codes above, because it
+  // went down `/api/act` like every button does.
+
+  /** No chat provider is configured on this deploy. The pane renders disabled. */
+  "CONSOLE_CHAT_UNAVAILABLE",
+  /** That provider cannot run here — no key, or a subprocess asked for on serverless. */
+  "CONSOLE_CHAT_PROVIDER_UNAVAILABLE",
+  /** The model provider refused, timed out, or died. **Nothing reached the arena.** */
+  "CONSOLE_CHAT_PROVIDER_ERROR",
+  /**
+   * Full autonomy needs an acknowledgement this server composed. The 428 names
+   * the terms; the browser echoes them back unchanged, exactly as it does for a
+   * payment. A mode the client could assert for itself is not a mode.
+   */
+  "CONSOLE_AUTONOMY_CONFIRM_REQUIRED",
+  /** Full autonomy is not offerable here — no opt-in, no ceiling, or no wallet. */
+  "CONSOLE_AUTONOMY_UNAVAILABLE",
+  /** The agent reached for a signed or paid command with no live grant. Nothing was sent. */
+  "CONSOLE_AUTONOMY_REQUIRED",
+  /**
+   * The amount `/api/act` computed exceeds the per-action cap. **Nothing was
+   * signed** — the cap is checked between the 428 and the confirmed retry, not
+   * after.
+   */
+  "CONSOLE_AUTONOMY_LIMIT",
 ] as const;
 
 export type ConsoleErrorCode = (typeof CONSOLE_ERROR_CODES)[number];
@@ -64,6 +94,12 @@ export type ConsoleErrorCode = (typeof CONSOLE_ERROR_CODES)[number];
  * `CONSOLE_SPEND_CAP` is 429, matching the canon's `RATE_LIMITED`: a limit was
  * hit, the request was fine, and waiting (here, restarting the sitting) changes
  * the answer.
+ *
+ * `CONSOLE_AUTONOMY_CONFIRM_REQUIRED` is 428 for the same reason
+ * `CONSOLE_CONFIRM_REQUIRED` is: the request was well-formed and the missing
+ * thing is a precondition the client can supply and retry with. The two are
+ * separate codes because they name different things — one confirms an amount,
+ * the other confirms that a machine may name amounts on your behalf.
  */
 export const CONSOLE_ERROR_STATUS: Record<ConsoleErrorCode, number> = {
   CONSOLE_MISCONFIGURED: 500,
@@ -80,6 +116,13 @@ export const CONSOLE_ERROR_STATUS: Record<ConsoleErrorCode, number> = {
   CONSOLE_CEILING_DISABLED: 409,
   CONSOLE_PAYMENT_INFLIGHT: 502,
   CONSOLE_TRANSPORT: 502,
+  CONSOLE_CHAT_UNAVAILABLE: 409,
+  CONSOLE_CHAT_PROVIDER_UNAVAILABLE: 409,
+  CONSOLE_CHAT_PROVIDER_ERROR: 502,
+  CONSOLE_AUTONOMY_CONFIRM_REQUIRED: 428,
+  CONSOLE_AUTONOMY_UNAVAILABLE: 409,
+  CONSOLE_AUTONOMY_REQUIRED: 403,
+  CONSOLE_AUTONOMY_LIMIT: 409,
 };
 
 /**
@@ -112,6 +155,20 @@ export const CONSOLE_ERROR_ENGLISH: Record<ConsoleErrorCode, string> = {
   CONSOLE_PAYMENT_INFLIGHT:
     "The connection died after a payment was signed. Re-read the canon before doing anything else — do not re-run this command.",
   CONSOLE_TRANSPORT: "The arena could not be reached. Nothing was signed.",
+  CONSOLE_CHAT_UNAVAILABLE:
+    "No model provider is configured on this deploy, so there is nothing for the agent to think with.",
+  CONSOLE_CHAT_PROVIDER_UNAVAILABLE:
+    "That provider cannot run here. The console renders the reason beside it rather than guessing at a substitute.",
+  CONSOLE_CHAT_PROVIDER_ERROR:
+    "The model provider refused or could not be reached. Nothing reached the arena and nothing was signed.",
+  CONSOLE_AUTONOMY_CONFIRM_REQUIRED:
+    "Full autonomy lets a machine sign and pay without asking. Confirm the terms this server named to proceed.",
+  CONSOLE_AUTONOMY_UNAVAILABLE:
+    "Full autonomy is not offerable on this deploy. Without a ceiling that can bound a sitting there is nothing to bound an agent.",
+  CONSOLE_AUTONOMY_REQUIRED:
+    "The agent reached for a command that signs or spends, and no grant is live. Nothing left the process.",
+  CONSOLE_AUTONOMY_LIMIT:
+    "The arena's price for that command is above the per-action cap for autonomous work. Nothing was signed.",
 };
 
 export interface ConsoleErrorBody {

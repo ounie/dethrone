@@ -20,6 +20,16 @@
  * 64 hex characters that look exactly like a private key and is the entire
  * asset. All three are asserted to survive in `test/redact.test.ts`, and that
  * half of the corpus is the half that catches an over-eager pattern.
+ *
+ * ## The agent gave this module a second job
+ *
+ * It used to run once, on the way to the browser, guarding one secret. It now
+ * runs twice: `/api/act` redacts its envelope as before, and the chat executor
+ * redacts that envelope *again* before it becomes a tool result — because a
+ * tool result is sent to a third-party model provider, which is an egress
+ * `/api/act` was never written to think about, and because the provider keys
+ * are secrets `/api/act` has never heard of. Same function, different secrets
+ * list, different destination.
  */
 
 const REDACTED = "[redacted]";
@@ -39,6 +49,12 @@ const SECRET_KEY_PATTERNS: readonly RegExp[] = [
   /mnemonic|seed[_-]?phrase/i,
   /^x-admin-token$/i,
   /^cookie$/i,
+  // The agent's credentials. `x-api-key` is Anthropic's own header name, which
+  // is the one that matters: an SDK error carrying its request headers is
+  // exactly the accident this module exists for. `apiKey` catches the config
+  // object a provider adapter throws with, in whichever casing it chose.
+  /api[_-]?key/i,
+  /access[_-]?token/i,
 ];
 
 /**

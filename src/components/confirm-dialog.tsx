@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import Dialog from "./dialog";
 
 /**
  * The confirmation.
@@ -37,36 +38,6 @@ export default function ConfirmDialog({
   onConfirm: () => void;
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
-  const backdropRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    confirmRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onCancel();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      // Trap focus. Nothing outside this dialog should be reachable while a
-      // question about spending money is open.
-      const focusable = backdropRef.current?.querySelectorAll<HTMLElement>("button");
-      if (!focusable || focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onCancel]);
 
   const money = new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -74,15 +45,8 @@ export default function ConfirmDialog({
   }).format(request.amountCents / 100);
 
   return (
-    <div
-      className="confirm-backdrop"
-      ref={backdropRef}
-      role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
-    >
-      <div className="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <Dialog labelledBy="confirm-title" onCancel={onCancel} initialFocus={confirmRef}>
+      <>
         <h2 className="display" id="confirm-title">
           {request.destructive ? "Destroy this claim?" : "Settle this payment?"}
         </h2>
@@ -126,7 +90,7 @@ export default function ConfirmDialog({
             {request.destructive ? "Release it" : `Settle ${money}`}
           </button>
         </div>
-      </div>
-    </div>
+      </>
+    </Dialog>
   );
 }

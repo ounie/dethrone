@@ -1,11 +1,15 @@
-import { DEFAULT_CONFIRM_OVER_CENTS, DEFAULT_MAX_SPEND_CENTS } from "./commands";
+import {
+  DEFAULT_AUTONOMY_MAX_CENTS,
+  DEFAULT_CONFIRM_OVER_CENTS,
+  DEFAULT_MAX_SPEND_CENTS,
+} from "./commands";
 
 /**
  * The startup assertions, as a pure function.
  *
  * `assertConsoleConfig(env, host)` returns findings; it never reads
  * `process.env`, never throws, and never touches the filesystem. That is what
- * makes the whole matrix — seven assertions across key/no-key, loopback/remote,
+ * makes the whole matrix — ten assertions across key/no-key, loopback/remote,
  * and three values of `VERCEL_ENV` — a table-driven unit test with no process
  * to poison and no module cache to reset.
  *
@@ -19,6 +23,18 @@ import { DEFAULT_CONFIRM_OVER_CENTS, DEFAULT_MAX_SPEND_CENTS } from "./commands"
  * paragraph stops nobody. A refusal to start stops everybody who forgot, and
  * only inconveniences the one person who meant it — who then sets the flag and
  * has made a choice on the record.
+ *
+ * ## Assertions 8 to 10, and why only one of them can refuse
+ *
+ * The agent added three. Two are about the same hazard as the first seven with
+ * a machine in the loop — an uncapped autonomous spend (8), and an autonomous
+ * agent on a host other people can reach (9) — so 9 refuses outright and 8
+ * refuses a cap that is not one.
+ *
+ * The third only warns, and the line is worth stating: **a misconfigured model
+ * provider cannot spend anything.** The worst case is a chat pane that renders
+ * disabled with a reason, which is a working console. Refusing to boot over it
+ * would make the failure worse than the fault.
  */
 
 export type FindingLevel = "fail" | "warn";
@@ -33,6 +49,39 @@ export type EnvLike = Record<string, string | undefined>;
 
 const KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 const SIGNATURE_RE = /^0x[0-9a-fA-F]{130,}$/;
+
+/**
+ * An LLM provider credential, by shape.
+ *
+ * `sk-` plus twenty-odd URL-safe characters covers every provider this console
+ * speaks to: `sk-ant-…` (Anthropic), `sk-or-v1-…` (OpenRouter), `sk-proj-…` and
+ * the bare form (OpenAI and the compatible endpoints). It is deliberately
+ * anchored — an unanchored version matches inside minified identifiers and
+ * hashed asset names, and a boot assertion that cries wolf gets deleted.
+ */
+const PROVIDER_KEY_RE = /^sk-(?:ant-|or-v1-|proj-)?[A-Za-z0-9_-]{20,}$/;
+
+/**
+ * A variable *named* like a credential, whatever its value happens to look
+ * like. The shape test above catches the providers we know; this catches the
+ * one nobody anticipated, which — per assertion 6's own test — is the case that
+ * matters.
+ */
+const SECRET_NAME_RE = /(?:api[_-]?key|secret[_-]?key|access[_-]?token)$/i;
+
+/**
+ * Which env var each chat provider needs, for assertion 10.
+ *
+ * `claude-max` is absent on purpose: it needs no key at all. It drives a local
+ * `claude` subprocess and inherits credentials the operator already has, which
+ * is the whole reason it is worth supporting — and also why it cannot run on a
+ * platform with no machine to spawn it on.
+ */
+const PROVIDER_REQUIREMENTS: Record<string, readonly string[]> = {
+  openrouter: ["OPENROUTER_API_KEY"],
+  anthropic: ["ANTHROPIC_API_KEY"],
+  "openai-compatible": ["OPENAI_COMPATIBLE_BASE_URL", "OPENAI_COMPATIBLE_API_KEY"],
+};
 
 /**
  * Loopback, in the forms a Host header or a `--hostname` flag actually takes.
@@ -201,13 +250,34 @@ export function assertConsoleConfig(env: EnvLike, host: string | null): Finding[
   // Over the whole env, not a fixed list — the prefix inlines its value into the
   // client bundle at BUILD time, which is why this assertion has to run in the
   // build and not only at boot.
+  //
+  // The agent widened what "a secret" means here. Until it arrived, the only
+  // credential this console could hold was 32 bytes of hex, so a 0x-shaped test
+  // was a complete test. An LLM provider key is `sk-` and base62, matches
+  // neither regex, and would have sailed into the bundle unremarked. So there
+  // are now three ways to fail: the value looks like a wallet key, the value
+  // looks like a provider key, or the NAME says it is a credential regardless of
+  // what the value looks like. The third exists because the next provider will
+  // have a key shape nobody here has seen.
   for (const [name, value] of Object.entries(env)) {
     if (!name.startsWith("NEXT_PUBLIC_") || !value) continue;
     const v = value.trim();
+    const bare = name.slice("NEXT_PUBLIC_".length);
+
     if (KEY_RE.test(v) || SIGNATURE_RE.test(v)) {
       fail(
         "CONSOLE_PUBLIC_SECRET",
         `${name} holds a value shaped like a private key or a signature. Anything prefixed NEXT_PUBLIC_ is inlined into the browser bundle. Rename it.`,
+      );
+    } else if (PROVIDER_KEY_RE.test(v)) {
+      fail(
+        "CONSOLE_PUBLIC_SECRET",
+        `${name} holds a value shaped like an LLM provider API key. Anything prefixed NEXT_PUBLIC_ is inlined into the browser bundle, where a provider key is a bill anyone can run up. Drop the prefix.`,
+      );
+    } else if (SECRET_NAME_RE.test(bare) && v.length >= 16) {
+      fail(
+        "CONSOLE_PUBLIC_SECRET",
+        `${name} is named like a credential and prefixed NEXT_PUBLIC_, which inlines it into the browser bundle. If it really is public, rename it so nobody has to wonder.`,
       );
     }
   }
@@ -229,6 +299,84 @@ export function assertConsoleConfig(env: EnvLike, host: string | null): Finding[
         "CONSOLE_CEILING_DISABLED",
         "Serverless with no KV store: invocations do not share memory, so the spend ceiling cannot bound a sitting. It is DISABLED rather than reset silently, and the screen says so. Set KV_REST_API_URL and KV_REST_API_TOKEN to restore it.",
       );
+    }
+  }
+
+  // ── 8. The per-action autonomy cap parses, and is a cap ───────────────────
+  //
+  // An autonomous agent's cap is not the same object as the sitting ceiling.
+  // The ceiling bounds everything you do in one session; this bounds one action
+  // a machine takes without asking. Set equal to or above the ceiling it stops
+  // being a per-action cap at all — one bad turn spends the entire sitting and
+  // the second guard was never a guard.
+  const autonomyCap = parseIntOr(env.CONSOLE_AUTONOMY_MAX_CENTS, DEFAULT_AUTONOMY_MAX_CENTS);
+  if (autonomyCap === null) {
+    fail(
+      "CONSOLE_BAD_AUTONOMY_CAP",
+      "CONSOLE_AUTONOMY_MAX_CENTS must be a non-negative whole number of cents.",
+    );
+  }
+  if (autonomyCap !== null && cap !== null && autonomyCap > cap) {
+    fail(
+      "CONSOLE_AUTONOMY_ABOVE_CAP",
+      `CONSOLE_AUTONOMY_MAX_CENTS (${autonomyCap}) is above CONSOLE_MAX_SPEND_CENTS (${cap}). A per-action cap above the sitting ceiling is not a cap — one autonomous action could spend everything.`,
+    );
+  }
+
+  // ── 9. Full autonomy is loopback-only, and that is enforced at boot ───────
+  //
+  // The runtime gate in `autonomy.ts` already refuses to offer a grant where the
+  // ceiling cannot bound a sitting. This is the earlier, blunter half: a
+  // reachable URL that can both spend a wallet AND decide for itself when to is
+  // the deployment shape the README bars outright, with a language model where
+  // the timer would be. Refusing here means nobody discovers it from a receipt.
+  //
+  // `CONSOLE_ALLOW_REMOTE` is included deliberately. It is the flag that turns
+  // off the per-request loopback check, so it is exactly the flag that would
+  // otherwise make this one vacuous.
+  if (hasKey && isTruthyFlag(env.CONSOLE_ALLOW_FULL_AUTONOMY)) {
+    if (onVercel) {
+      fail(
+        "CONSOLE_AUTONOMY_REMOTE",
+        "CONSOLE_ALLOW_FULL_AUTONOMY is set on a serverless deployment that holds a key. An agent that can sign and pay without being asked, behind a URL other people can reach, is the deployment shape this console refuses to build. Run it locally.",
+      );
+    } else if (isTruthyFlag(env.CONSOLE_ALLOW_REMOTE)) {
+      fail(
+        "CONSOLE_AUTONOMY_REMOTE",
+        "CONSOLE_ALLOW_FULL_AUTONOMY and CONSOLE_ALLOW_REMOTE are both set. CONSOLE_ALLOW_REMOTE turns off the per-request loopback check that is the only thing keeping an autonomous agent on your own machine. Pick one.",
+      );
+    }
+  }
+
+  // ── 10. A named chat provider can actually run here ───────────────────────
+  //
+  // A warning, not a failure: naming a provider you have not configured yet is
+  // a half-finished setup, not a hazard. Nothing here can spend. The console
+  // renders the reason beside the provider and falls back to whatever else is
+  // available, so the only thing this adds is saying so at boot instead of
+  // making the operator find it in the UI.
+  const named = env.CONSOLE_CHAT_PROVIDER?.trim();
+  if (named) {
+    if (named === "claude-max") {
+      if (onVercel) {
+        warn(
+          "CONSOLE_CHAT_SUBPROCESS_UNAVAILABLE",
+          "CONSOLE_CHAT_PROVIDER=claude-max drives a local `claude` subprocess and inherits your own Claude Code credentials. A serverless invocation has neither a machine to spawn it on nor credentials to inherit, so this provider will render unavailable.",
+        );
+      }
+    } else if (!(named in PROVIDER_REQUIREMENTS)) {
+      warn(
+        "CONSOLE_CHAT_PROVIDER_UNKNOWN",
+        `CONSOLE_CHAT_PROVIDER=${named} is not a provider this console knows. Expected one of: ${["claude-max", ...Object.keys(PROVIDER_REQUIREMENTS)].join(", ")}.`,
+      );
+    } else {
+      const missing = PROVIDER_REQUIREMENTS[named].filter((v) => !env[v]?.trim());
+      if (missing.length > 0) {
+        warn(
+          "CONSOLE_CHAT_PROVIDER_UNAVAILABLE",
+          `CONSOLE_CHAT_PROVIDER=${named} but ${missing.join(" and ")} ${missing.length > 1 ? "are" : "is"} not set, so that provider will render unavailable.`,
+        );
+      }
     }
   }
 

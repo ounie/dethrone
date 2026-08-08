@@ -635,13 +635,29 @@ code {
   color: var(--ember-200);
 }
 
-/* ── The three-plus-two grid ──────────────────────────────────────────────── */
+/* ── The three-column grid ────────────────────────────────────────────────── */
+/*
+ * Column 1 is the catalogue — the permission model, rendered. Column 2 is where
+ * things are caused: the chat, then the command form, then the record of what
+ * ran. Column 3 is where things are seen: the response envelope and the seat.
+ *
+ * The chat sits ABOVE the command pane rather than beside the response, and the
+ * placement is an argument. The agent is a second input device onto the same
+ * Run button, not a thing you read; putting it in the see-things column would
+ * say otherwise. Reading down column two is now cause → instrument → record,
+ * and loading a proposal moves the eye one pane downward, which is the
+ * direction the page already flows.
+ *
+ * `response` spans both upper rows because it is the tallest pane on the screen
+ * and it is what the chat's tool calls and the Run button both write into.
+ */
 
 .console {
   display: grid;
   grid-template-columns: minmax(0, 330px) minmax(0, 1fr) minmax(0, 1.05fr);
   grid-template-areas:
-    "rail command response"
+    "rail chat     response"
+    "rail command  response"
     "rail log      seat";
   gap: var(--s4);
   align-items: start;
@@ -652,6 +668,9 @@ code {
   max-height: calc(100dvh - var(--s8));
   position: sticky;
   top: var(--s5);
+}
+.pane-chat {
+  grid-area: chat;
 }
 .pane-command {
   grid-area: command;
@@ -1491,6 +1510,296 @@ code {
   color: var(--awaiting);
 }
 
+/* ── Agent chat ───────────────────────────────────────────────────────────── */
+/*
+ * THE RULE FOR THIS WHOLE SECTION, because the pressure to break it is real:
+ *
+ *   Ember FILL + rim glow  = one button, the one that settles an amount now.
+ *   Ember HAIRLINE or tint = a caution frame, and nothing else.
+ *
+ * A chat pane wants a filled accent Send button, a filled "Approve" on every
+ * proposal, and a glowing "autonomy on" badge. Each is individually defensible
+ * and together they end the meaning of the only accent on this screen. Send is
+ * teal, because sending a sentence stakes nothing. Loading a proposal is teal,
+ * because it fills in a form. The autonomy chip is AMBER, not ember, because it
+ * announces that a guard is off rather than that money is moving — the same
+ * amber the ceiling meter already spends on "disabled".
+ *
+ * And the second-order version, which is the one to watch for: no token counts,
+ * no model prices, no "this turn cost" line anywhere. That number is money, it
+ * would want ember, and it would be a SECOND currency on a screen whose entire
+ * colour argument rests on there being one.
+ */
+
+/* Bounded, not growing. A pane that lengthens with every token pushes the
+   Command pane down on every token, and a Run button that walks away while you
+   reach for it is a Run button that gets missed. */
+.chat-log {
+  display: grid;
+  gap: var(--s2);
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: var(--s4) var(--s4) var(--s2);
+}
+
+.chat-empty {
+  padding: var(--s5) var(--s4);
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.turn {
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+/* The operator's own words: inset and monospace, because every other input on
+   this screen is monospace. */
+.turn[data-who="you"] {
+  padding: 7px 10px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-body);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The agent speaking. The gilt left rule is borrowed from .note: gold is the
+   material this console uses to frame a VOICE rather than a record, and
+   everything the agent says is a second opinion until a tool row proves it. */
+.turn[data-who="agent"] {
+  padding-left: var(--s3);
+  border-left: 2px solid var(--border-gilt);
+  color: var(--text-muted);
+  max-width: 68ch;
+}
+
+.turn p {
+  margin: 0 0 var(--s2);
+}
+.turn p:last-child {
+  margin-bottom: 0;
+}
+
+.turn-time {
+  float: right;
+  margin-left: var(--s2);
+  font-size: 10px;
+  color: var(--parchment-600);
+}
+
+/* A word, not a spinner. Every animation on this screen is switched off under
+   prefers-reduced-motion, so an animated indicator vanishes for exactly the
+   people most likely to need to know something is happening. */
+.turn[data-pending="true"]::after {
+  content: "…";
+  color: var(--text-faint);
+}
+
+/* Deliberately the same geometry as .cmd in the rail: a tool call the agent
+   made and a command the operator clicked are the same kind of event. */
+.tool-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-panel-flat);
+  font-size: 11.5px;
+}
+
+.tool-row[data-state="running"] {
+  border-style: dashed;
+  color: var(--text-faint);
+}
+
+.tool-path {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-body);
+}
+
+.tool-args {
+  margin: 0;
+  padding: 2px 9px 0 12px;
+  border-left: 1px solid var(--border-hairline);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+.turn[data-who="refusal"] {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 5px 9px;
+  border: 1px solid var(--border-hairline);
+  border-left: 2px solid var(--verdict-loss);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--verdict-loss-fg);
+}
+
+/*
+ * A proposal is a CARD, not a button that spends. It carries an ember hairline
+ * when the command it names is paid — the same hairline the catalogue already
+ * spends on a paid row — and it never carries the ember fill or the rim glow.
+ * Those belong to one element on this screen, and it is the Run button in the
+ * pane this card loads.
+ */
+.proposal {
+  padding: var(--s3);
+  border: 1px solid var(--border-hairline);
+  border-left: 2px solid var(--border-teal);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  box-shadow: var(--bevel-stone-raised);
+}
+
+.proposal[data-tier="paid"] {
+  border-left-color: var(--ember-600);
+}
+
+.proposal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin-bottom: 6px;
+}
+
+.proposal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-display);
+}
+
+.proposal-why {
+  margin: 0 0 var(--s2);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+/* Quiet on purpose: this button loads a form. It cannot spend, so it must not
+   look like it can. */
+.proposal-load {
+  width: 100%;
+  justify-content: center;
+}
+
+.proposal[data-loaded="true"] .proposal-load {
+  color: var(--teal-400);
+  border-color: var(--border-teal);
+}
+
+/* ── Composer ─────────────────────────────────────────────────────────────── */
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4) var(--s4);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  max-height: 140px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-display);
+  font: inherit;
+  font-size: 12.5px;
+  resize: vertical;
+}
+
+.composer textarea:focus {
+  border-color: var(--border-ember);
+  outline: none;
+}
+
+.composer textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Teal, and never data-paid. This button sends a sentence. */
+.composer .run {
+  width: auto;
+  min-width: 96px;
+  min-height: 38px;
+}
+
+/* ── Head chips: model, and the leash ─────────────────────────────────────── */
+
+.chat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--teal-400);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  max-width: 26ch;
+}
+
+.chat-chip:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* NOT ember. The masthead already spends this exact amber on "the ceiling is
+   disabled", and "the human is out of the loop" is the same sentence about a
+   different guard. This chip settles no amount. */
+.chat-chip[data-mode="full"] {
+  color: var(--awaiting);
+  border-color: rgba(224, 145, 42, 0.45);
+  background: rgba(224, 145, 42, 0.08);
+}
+
+.providers {
+  display: grid;
+  gap: 3px;
+  padding: var(--s3);
+}
+
+.provider-reason {
+  margin: 0 0 var(--s2);
+  padding: 2px 9px 0 12px;
+  border-left: 1px solid var(--frozen);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.model-select {
+  width: 100%;
+}
+
 /* ── Confirmation ─────────────────────────────────────────────────────────── */
 
 .confirm-backdrop {
@@ -1596,6 +1905,7 @@ code {
   .console {
     grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
     grid-template-areas:
+      "rail chat"
       "rail command"
       "rail response"
       "log  log"
@@ -1625,6 +1935,7 @@ code {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "rail"
+      "chat"
       "command"
       "response"
       "log"
@@ -1633,6 +1944,13 @@ code {
   .pane-rail {
     position: static;
     max-height: 340px;
+  }
+  /* Two chips in one head. Panel heads stay nowrap everywhere else. */
+  .pane-chat .panel-head {
+    flex-wrap: wrap;
+  }
+  .chat-log {
+    max-height: 52vh;
   }
   .chip-value {
     max-width: 22ch;

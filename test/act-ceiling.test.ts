@@ -164,6 +164,56 @@ describe("the ceiling", () => {
   });
 });
 
+/**
+ * The confirmation threshold tightens and never loosens.
+ *
+ * A caller may ask this route to demand a confirmation it would otherwise skip
+ * — the agent does, because its per-action cap is far below a human's
+ * threshold and the 428 is the only place a price is revealed before it
+ * settles. The direction is the whole safety argument: `Math.min`, so a request
+ * can make the route ask a question and can never make it stop asking one.
+ */
+describe("a caller can tighten the confirmation threshold, never loosen it", () => {
+  it("demands a confirmation for a command that would otherwise have run", async () => {
+    // Forge is 10 cents against a configured threshold of 100 — normally silent.
+    call.mockResolvedValue(ok());
+    const res = await post({ id: "forge", confirmOverCents: 0 });
+
+    expect(res.status).toBe(428);
+    expect((res.body.error as unknown as { detail: { amountCents: number } }).detail.amountCents).toBe(10);
+    expect(call, "a request left the process before the amount was confirmed").not.toHaveBeenCalled();
+  });
+
+  it("IGNORES an attempt to raise it above what the operator configured", async () => {
+    // The line that would break if `min` ever became assignment. A caller-priced
+    // command must still confirm at any amount, and a request asking for a
+    // threshold of a million must not change that.
+    call.mockResolvedValue(ok());
+    const res = await post({
+      id: "post_duel",
+      args: { characterId: "1", arenaSlug: "a", stake: "5000" },
+      confirmOverCents: 1_000_000,
+    });
+
+    expect(res.status).toBe(428);
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("cannot lift a fixed-price command over the configured threshold either", async () => {
+    // challenge is 100 cents; the configured threshold is 100, so it is exactly
+    // at the line and does not confirm. A caller asking for 100000 must not
+    // change the answer for a MORE expensive command.
+    vi.stubEnv("CONSOLE_CONFIRM_OVER_CENTS", "5");
+    vi.resetModules();
+    call.mockResolvedValue(ok());
+
+    const res = await post({ id: "challenge", args: { characterId: "1" }, confirmOverCents: 100_000 });
+
+    expect(res.status).toBe(428);
+    expect(call).not.toHaveBeenCalled();
+  });
+});
+
 describe("the confirmation is enforced server-side", () => {
   it("refuses a caller-priced command with no confirmation, however small", async () => {
     call.mockResolvedValue(ok());

@@ -7,7 +7,11 @@ import {
   resolveKvRest,
   type Finding,
 } from "./assertions";
-import { DEFAULT_CONFIRM_OVER_CENTS, DEFAULT_MAX_SPEND_CENTS } from "./commands";
+import {
+  DEFAULT_AUTONOMY_MAX_CENTS,
+  DEFAULT_CONFIRM_OVER_CENTS,
+  DEFAULT_MAX_SPEND_CENTS,
+} from "./commands";
 
 /**
  * The impure half of the boot assertions: read the environment once, run the
@@ -39,6 +43,16 @@ export interface ConsoleConfig {
   /** False when the ceiling cannot bound a sitting. The UI says so; it never shows a number. */
   ceilingEnabled: boolean;
   ceilingDisabledReason?: string;
+  /**
+   * Whether this deploy is willing to *offer* full autonomy at all. Not whether
+   * a grant is live — that is a runtime fact held by `chat/autonomy.ts`, and it
+   * has its own reasons for refusing (no ceiling, no wallet) on top of this one.
+   */
+  allowFullAutonomy: boolean;
+  /** The most one autonomous action may cost. See DEFAULT_AUTONOMY_MAX_CENTS. */
+  autonomyMaxCents: number;
+  /** The provider to select first, when it is available. Never a fallback rule. */
+  chatDefaultProvider: string | null;
   findings: Finding[];
 }
 
@@ -122,6 +136,13 @@ export function config(): ConsoleConfig {
     ceilingDisabledReason: ceilingEnabled
       ? undefined
       : "Serverless invocations do not share memory, so a per-process counter cannot bound a sitting. Set KV_REST_API_URL and KV_REST_API_TOKEN to restore it.",
+    // The env opt-in, and nothing more. This being true does not mean autonomy
+    // is offerable — `chat/autonomy.ts` still refuses without a ceiling that can
+    // bound a sitting and a wallet that can sign. Deciding that here would put
+    // the same rule in two places, and one of them would drift.
+    allowFullAutonomy: isTruthyFlag(env.CONSOLE_ALLOW_FULL_AUTONOMY),
+    autonomyMaxCents: intOr(env.CONSOLE_AUTONOMY_MAX_CENTS, DEFAULT_AUTONOMY_MAX_CENTS),
+    chatDefaultProvider: env.CONSOLE_CHAT_PROVIDER?.trim() || null,
     findings,
   };
 

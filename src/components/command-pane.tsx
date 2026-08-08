@@ -5,7 +5,7 @@ import CodeBlock from "./code-block";
 import Icon from "./icon";
 import Panel from "./panel";
 import type { Capability, StakeRange } from "@/lib/capability";
-import { isCallerPriced, type Command, type Field } from "@/lib/commands";
+import { fieldsFor, isCallerPriced, type Command, type Field } from "@/lib/commands";
 import { money } from "@/lib/format";
 
 /**
@@ -25,26 +25,6 @@ import { money } from "@/lib/format";
  * computed, which is what lets `test/currency-literals.test.ts` run with an
  * empty allowlist.
  */
-
-/**
- * The extra field a listing-priced command needs.
- *
- * The console cannot know what a listing costs — the arena holds that, and it
- * arrives in the 402. So the operator names a ceiling instead, and a higher
- * quote is refused *before anything is signed*. That is the difference between
- * a seatbelt and a receipt.
- */
-const MAX_FIELD: Field = {
-  name: "maxCents",
-  label: "Maximum you will pay (cents)",
-  kind: "number",
-  hint: "The arena quotes the real price. A higher quote is refused before a signature exists.",
-};
-
-function fieldsFor(cmd: Command): readonly Field[] {
-  const base = cmd.fields ?? [];
-  return cmd.maxField ? [...base, MAX_FIELD] : base;
-}
 
 function stakeHint(cmd: Command, range: StakeRange): string | undefined {
   if (cmd.id !== "post_duel") return undefined;

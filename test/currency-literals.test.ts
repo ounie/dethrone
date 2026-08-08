@@ -10,10 +10,20 @@ import { SRC, read, rel, sourceFiles } from "./graph";
  *
  * ## Why the allowlist is empty
  *
- * `DEFAULT_MAX_SPEND_CENTS` and `DEFAULT_CONFIRM_OVER_CENTS` live in
- * `commands.ts` rather than in `config.ts`, which reads backwards until you
- * notice it is the only arrangement in which this test needs no exceptions.
- * An allowlist with one entry acquires a second, and the fifth is a price.
+ * `DEFAULT_MAX_SPEND_CENTS`, `DEFAULT_CONFIRM_OVER_CENTS` and
+ * `DEFAULT_AUTONOMY_MAX_CENTS` live in `commands.ts` rather than in
+ * `config.ts`, which reads backwards until you notice it is the only
+ * arrangement in which this test needs no exceptions. An allowlist with one
+ * entry acquires a second, and the fifth is a price.
+ *
+ * ## The agent makes this test matter more, not less
+ *
+ * `src/app/api/chat/route.ts` is under `src/app/`, so it is scanned like
+ * everything else — and the natural thing to write in a system prompt is a
+ * sentence like "forging costs $0.10". That is a price this console typed,
+ * which is precisely the failure this test exists to catch, so the prompt is
+ * assembled at runtime from `COMMANDS[].price` instead. The same rule kills the
+ * other tempting literal: a token cost. There is one currency on this screen.
  */
 
 const SCANNED = [join(SRC, "app"), join(SRC, "components")];
@@ -52,11 +62,12 @@ describe("no hand-typed money in the UI", () => {
     const catalogue = read(join(SRC, "lib/commands.ts"));
     expect(catalogue).toMatch(/export const DEFAULT_MAX_SPEND_CENTS = \d+;/);
     expect(catalogue).toMatch(/export const DEFAULT_CONFIRM_OVER_CENTS = \d+;/);
+    expect(catalogue).toMatch(/export const DEFAULT_AUTONOMY_MAX_CENTS = \d+;/);
 
     for (const file of sourceFiles()) {
       if (file === join(SRC, "lib/commands.ts")) continue;
       expect(read(file), `${rel(file)} declares a ceiling default`).not.toMatch(
-        /(?:const|let)\s+DEFAULT_(MAX_SPEND|CONFIRM_OVER)_CENTS\s*=/,
+        /(?:const|let)\s+DEFAULT_(MAX_SPEND|CONFIRM_OVER|AUTONOMY_MAX)_CENTS\s*=/,
       );
     }
   });

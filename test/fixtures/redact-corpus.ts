@@ -22,6 +22,9 @@ export const FIXTURE_SIGNATURE =
 export const FIXTURE_TX = "0x" + "9".repeat(64);
 export const FIXTURE_ADDRESS = "0xAbC0000000000000000000000000000000000001";
 
+/** An LLM provider credential. Invented, and shaped like the real thing. */
+export const FIXTURE_PROVIDER_KEY = "sk-ant-api03-" + "Z".repeat(48);
+
 /** A plausible x402 payload: base64 JSON naming an authorization. */
 export const FIXTURE_X402 = Buffer.from(
   JSON.stringify({
@@ -124,6 +127,38 @@ export const CORPUS: Specimen[] = [
     mustContain: ["interface-v2"],
   },
 
+  // ── The agent's credentials. A different shape, the same accident. ────────
+  {
+    name: "the x-api-key header an Anthropic SDK error carries",
+    input: { headers: { "x-api-key": FIXTURE_PROVIDER_KEY, "anthropic-version": "2023-06-01" } },
+    mustNotContain: [FIXTURE_PROVIDER_KEY],
+    mustContain: ["2023-06-01"],
+  },
+  {
+    name: "a provider config object thrown into an error",
+    input: { provider: "anthropic", apiKey: FIXTURE_PROVIDER_KEY, model: "claude-opus-5" },
+    mustNotContain: [FIXTURE_PROVIDER_KEY],
+    mustContain: ["claude-opus-5"],
+  },
+  {
+    name: "the snake_case spelling, because half the ecosystem uses it",
+    input: { api_key: FIXTURE_PROVIDER_KEY },
+    mustNotContain: [FIXTURE_PROVIDER_KEY],
+    mustContain: [],
+  },
+  {
+    name: "an OpenRouter bearer header",
+    input: { authorization: `Bearer sk-or-v1-${"c".repeat(48)}` },
+    mustNotContain: ["sk-or-v1-"],
+    mustContain: [],
+  },
+  {
+    name: "an access token from an OAuth-shaped provider",
+    input: { access_token: "atk_" + "e".repeat(40), scope: "models:read" },
+    mustNotContain: ["atk_"],
+    mustContain: ["models:read"],
+  },
+
   // ── The survivors. This half is why the patterns are bounded at 130 hex. ──
   {
     name: "SURVIVOR: a transaction hash — the operator's only link to the chain",
@@ -148,6 +183,30 @@ export const CORPUS: Specimen[] = [
     input: { interface: "interface-v2", error: { code: "SEAT_VESTING" } },
     mustNotContain: [],
     mustContain: ["interface-v2", "SEAT_VESTING"],
+  },
+  {
+    name: "SURVIVOR: a model id — the operator picked it and needs to see which one ran",
+    input: { provider: "openrouter", model: "anthropic/claude-opus-5" },
+    mustNotContain: [],
+    mustContain: ["anthropic/claude-opus-5"],
+  },
+  {
+    name: "SURVIVOR: a tool call's name and arguments — the audit trail of what the agent did",
+    input: { tool: "dethrone_challenge", args: { characterId: "12" }, status: 409 },
+    mustNotContain: [],
+    mustContain: ["dethrone_challenge", "12"],
+  },
+  {
+    name: "SURVIVOR: an ordinary key named `key` — /api[_-]?key/i must not widen to this",
+    input: { key: "arena/base/2026", region: "eu" },
+    mustNotContain: [],
+    mustContain: ["arena/base/2026", "eu"],
+  },
+  {
+    name: "SURVIVOR: prose containing the word token — a name is not a value",
+    input: { error: { message: "the participant token expired before the match began" } },
+    mustNotContain: [],
+    mustContain: ["expired before the match began"],
   },
 
   // ── Two recorded envelopes, in the shape /api/act actually returns. ───────

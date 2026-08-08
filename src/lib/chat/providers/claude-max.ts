@@ -1,0 +1,214 @@
+import "server-only";
+import { z } from "zod";
+import type { ModelChoice } from "../../agent";
+import { TURN_TIMEOUT_MS, type ChatEvent, type ProviderRunInput, type ToolExecutor } from "../types";
+import { subprocessImpossible, type ProviderModule } from "./registry";
+
+/**
+ * Claude on the operator's own Max or Pro subscription.
+ *
+ * ## The only provider that asks for no key, and the only one that cannot run everywhere
+ *
+ * Those are the same fact. A Claude subscription cannot be used over the raw
+ * Messages API — there is no key to issue and no header to send. What can use it
+ * is `@anthropic-ai/claude-agent-sdk`, which is Claude Code packaged as a
+ * library: it spawns a local `claude` process, and that process resolves the
+ * credentials the operator already has from Claude Code or `ant auth login`.
+ *
+ * So the subscription pays, nothing in this repo ever holds a credential for
+ * it, and there is correspondingly nothing to leak. The cost is that it needs a
+ * machine to spawn a process on and credentials on disk to inherit, which a
+ * serverless invocation has neither of. On such a deploy this provider renders
+ * unavailable with that sentence, rather than failing at the first message.
+ *
+ * ## What the subprocess is allowed to do
+ *
+ * Almost nothing. `allowedTools` names only the tools this console provides,
+ * so the harness's own Bash, Read, Write, Edit, Glob, Grep, WebSearch and
+ * WebFetch are all off. That matters more here than with the other three
+ * providers: this one runs on the operator's machine with the operator's
+ * credentials, and a coding agent's default toolset on a wallet-holding host is
+ * a much larger surface than the arena.
+ *
+ * The tools it does get are an in-process MCP server whose handlers call the
+ * same `ToolExecutor` every other provider is handed — so the tier gate, the
+ * grant and the confirmation echo apply identically. The SDK is never given the
+ * arena's URL, a wallet, or the `@dethrone/mcp` package: an agent talking
+ * straight to the arena's own MCP server would pay outside this console's
+ * ceiling, which is the one thing this whole design exists to prevent.
+ *
+ * This file is the only place `@anthropic-ai/claude-agent-sdk` is imported, and
+ * `test/chat-route.test.ts` pins that.
+ */
+
+/**
+ * The SDK publishes no model catalogue, so this list is written here — the one
+ * place in this feature where a list is hand-held rather than fetched.
+ *
+ * It is honest about being a convenience: the picker degrades to a free-text
+ * model id, and an id typed there is passed through untouched. A model released
+ * after this line was written is usable the day it ships.
+ */
+const KNOWN_MODELS: ModelChoice[] = [
+  { id: "claude-opus-4-5", label: "Claude Opus 4.5" },
+  { id: "sonnet", label: "Claude Sonnet (latest)" },
+  { id: "opus", label: "Claude Opus (latest)" },
+  { id: "haiku", label: "Claude Haiku (latest)" },
+];
+
+const MCP_SERVER = "dethrone";
+
+/**
+ * A zod shape from a tool's JSON schema.
+ *
+ * Every property is a string — see `chat/tools.ts` for why — so this is a
+ * mechanical translation rather than a schema compiler, and it stays that way
+ * on purpose. The moment it needs to handle a second type, the tool schema and
+ * the route's body schema have drifted apart and that is the bug to fix.
+ */
+function shapeFor(parameters: Record<string, unknown>): z.ZodRawShape {
+  const props = (parameters.properties ?? {}) as Record<string, { description?: string }>;
+  const required = new Set((parameters.required ?? []) as string[]);
+
+  const shape: Record<string, z.ZodType> = {};
+  for (const [name, prop] of Object.entries(props)) {
+    const base = z.string().describe(prop.description ?? name);
+    shape[name] = required.has(name) ? base : base.optional();
+  }
+  return shape as z.ZodRawShape;
+}
+
+async function run(input: ProviderRunInput, execute: ToolExecutor): Promise<ChatEvent[]> {
+  const { createSdkMcpServer, query, tool } = await import("@anthropic-ai/claude-agent-sdk");
+
+  const events: ChatEvent[] = [];
+
+  const tools = input.tools.map((spec) =>
+    tool(spec.name, spec.description, shapeFor(spec.parameters), async (args) => {
+      const outcome = await execute({
+        id: `${spec.name}_${events.length}`,
+        name: spec.name,
+        args: args as Record<string, unknown>,
+      });
+      events.push(outcome.event);
+      return {
+        content: [{ type: "text" as const, text: outcome.toolResult.content }],
+        isError: outcome.toolResult.isError,
+      };
+    }),
+  );
+
+  // The transcript, flattened. The SDK owns its own conversation state, so the
+  // history is replayed as context rather than as structured turns — a turn
+  // this console re-executed would be a second payment for one command.
+  const transcript = input.history
+    .map((turn) => {
+      if (turn.role === "user") return `Operator: ${turn.text}`;
+      if (turn.role === "assistant") return turn.text ? `You: ${turn.text}` : "";
+      return turn.results.map((r) => `Tool result: ${r.content}`).join("\n");
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  const allowed = input.tools.map((t) => `mcp__${MCP_SERVER}__${t.name}`);
+
+  const response = query({
+    prompt: transcript,
+    options: {
+      model: input.model,
+      systemPrompt: { type: "preset", preset: "claude_code", append: input.system },
+      mcpServers: {
+        [MCP_SERVER]: createSdkMcpServer({ name: MCP_SERVER, version: "1.0.0", tools }),
+      },
+      // The console's tools, and nothing else. No filesystem, no shell, no web.
+      allowedTools: allowed,
+      disallowedTools: [
+        "Bash",
+        "Read",
+        "Write",
+        "Edit",
+        "NotebookEdit",
+        "Glob",
+        "Grep",
+        "WebSearch",
+        "WebFetch",
+        "Task",
+      ],
+      /**
+       * An explicit allowlist, and NOT `permissionMode: "bypassPermissions"`.
+       *
+       * The SDK is Claude Code, so it expects a human at a terminal to approve
+       * tool calls. There is nobody there: this runs inside a web request, and
+       * an unanswered prompt is a turn that reports it could not read the seat.
+       *
+       * The tempting fix is to bypass permissions wholesale. This does not,
+       * because the two mechanisms guard different things and only one of them
+       * is redundant here. The console's own gate — the tier check, the grant,
+       * the confirmation echo — has already run by the time a tool executes, so
+       * a second prompt in front of `dethrone_*` asks a question that was
+       * already answered. It has answered nothing about `Bash`. So the callback
+       * says yes to exactly the tools this console generated and no to
+       * everything else, by name, and a tool the SDK adds in a future version
+       * is denied by default rather than inherited.
+       */
+      canUseTool: async (toolName) =>
+        allowed.includes(toolName)
+          ? // No `updatedInput`: passing one REPLACES the model's arguments, and
+            // an empty object would blank every field before the executor saw it.
+            { behavior: "allow" }
+          : {
+              behavior: "deny",
+              message: `${toolName} is not available in the Dethrone Console. Only the arena's own commands are.`,
+            },
+      abortController: abortFrom(input.signal),
+      maxTurns: 8,
+    },
+  });
+
+  for await (const message of response) {
+    if (message.type === "assistant") {
+      for (const block of message.message.content) {
+        if (block.type === "text" && block.text) events.push({ type: "text", text: block.text });
+      }
+      if (message.error) {
+        throw new Error(`The local Claude session failed: ${message.error}`);
+      }
+    } else if (message.type === "result" && message.subtype !== "success") {
+      throw new Error(`The local Claude session ended: ${message.subtype}`);
+    }
+  }
+
+  return events;
+}
+
+/** The SDK wants an AbortController; the rest of this feature passes signals. */
+function abortFrom(signal: AbortSignal): AbortController {
+  const controller = new AbortController();
+  if (signal.aborted) controller.abort();
+  else signal.addEventListener("abort", () => controller.abort(), { once: true });
+  // A local subprocess with no upstream rate limit still needs an outer bound.
+  setTimeout(() => controller.abort(), TURN_TIMEOUT_MS).unref?.();
+  return controller;
+}
+
+export const provider: ProviderModule = {
+  id: "claude-max",
+
+  unavailable(env) {
+    if (env.CONSOLE_CHAT_DISABLE_SUBPROCESS?.trim()) {
+      return "Disabled on this deploy by CONSOLE_CHAT_DISABLE_SUBPROCESS.";
+    }
+    if (subprocessImpossible(env)) {
+      return "The Claude Agent SDK drives a local `claude` subprocess and inherits your own Claude Code credentials. A serverless invocation has neither a machine to spawn it on nor credentials to inherit, so this provider only works when the console runs on your own computer.";
+    }
+    return null;
+  },
+
+  async models() {
+    return { models: KNOWN_MODELS };
+  },
+
+  async adapter() {
+    return { id: "claude-max", run };
+  },
+};
