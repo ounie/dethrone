@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import ChatPane from "./chat-pane";
 import CommandPane from "./command-pane";
 import ConfirmDialog, { type ConfirmRequest } from "./confirm-dialog";
 import Masthead, { type Ceiling, type Wallet } from "./masthead";
@@ -8,8 +9,9 @@ import Rail from "./rail";
 import ResponseLog, { type LogRow } from "./response-log";
 import ResponsePane, { type Envelope } from "./response-pane";
 import SeatState, { type SeatSnapshot } from "./seat-state";
+import type { AgentConfig, ChatEventWire } from "@/lib/agent";
 import type { Capabilities, StakeRange } from "@/lib/capability";
-import { COMMANDS, type Command } from "@/lib/commands";
+import { byId, COMMANDS, type Command } from "@/lib/commands";
 import { logTime } from "@/lib/format";
 
 /**
@@ -31,6 +33,7 @@ export default function Console({
   operator,
   baseUrl,
   capabilities,
+  agent,
   forgeNote,
   stakeRange,
   ceiling,
@@ -40,6 +43,7 @@ export default function Console({
   operator: string | null;
   baseUrl: string;
   capabilities: Capabilities;
+  agent: AgentConfig;
   forgeNote: string | null;
   stakeRange: StakeRange;
   ceiling: Ceiling;
@@ -55,6 +59,53 @@ export default function Console({
   const [pending, setPending] = useState<
     { request: ConfirmRequest; confirm: { amountCents: number; payer: string } } | null
   >(null);
+
+  /**
+   * One envelope, absorbed.
+   *
+   * Extracted so the agent's tool results and the operator's own Run land in
+   * the response pane, the session log and the ceiling meter through exactly
+   * one function. Two paths would eventually disagree about what counts as a
+   * settled command, and the screen would then hold two answers about money.
+   */
+  const absorb = useCallback(
+    (
+      data: Envelope,
+      meta: { method: string; path: string; amountCents: number | null },
+    ) => {
+      setEnvelope(data);
+      if (data.ceiling?.enabled) {
+        setLive((prev) => ({
+          ...prev,
+          spentCents: data.ceiling?.spentCents ?? prev.spentCents,
+          capCents: data.ceiling?.cap ?? prev.capCents,
+        }));
+      }
+      setLog((prev) =>
+        [
+          {
+            at: logTime(new Date()),
+            method: meta.method,
+            path: data.request?.path ?? meta.path,
+            status: data.status ?? data.error?.code ?? "—",
+            settled: data.settled === true,
+            amountCents: meta.amountCents,
+            ms: data.ms ?? null,
+          },
+          ...prev,
+        ].slice(0, 25),
+      );
+    },
+    [],
+  );
+
+  /** A proposal, accepted. Pre-fills the form; it does not run anything. */
+  const loadCommand = useCallback((commandId: string, next: Record<string, string>) => {
+    const cmd = byId(commandId);
+    if (!cmd) return;
+    setActive(cmd);
+    setArgs(next);
+  }, []);
 
   const send = useCallback(
     async (cmd: Command, confirm?: { amountCents: number; payer: string }) => {
@@ -93,29 +144,11 @@ export default function Console({
           return;
         }
 
-        setEnvelope(data);
-        if (data.ceiling?.enabled) {
-          setLive((prev) => ({
-            ...prev,
-            spentCents: data.ceiling?.spentCents ?? prev.spentCents,
-            capCents: data.ceiling?.cap ?? prev.capCents,
-          }));
-        }
-
-        setLog((prev) =>
-          [
-            {
-              at: logTime(new Date()),
-              method: cmd.method,
-              path: data.request?.path ?? cmd.path,
-              status: data.status ?? data.error?.code ?? res.status,
-              settled: data.settled === true,
-              amountCents: confirm?.amountCents ?? null,
-              ms: data.ms ?? null,
-            },
-            ...prev,
-          ].slice(0, 25),
-        );
+        absorb(data, {
+          method: cmd.method,
+          path: cmd.path,
+          amountCents: confirm?.amountCents ?? null,
+        });
       } catch (err) {
         setEnvelope({
           error: {
@@ -127,7 +160,20 @@ export default function Console({
         setBusy(false);
       }
     },
-    [args, operator],
+    [absorb, args, operator],
+  );
+
+  /** A tool the agent ran. Same envelope, same panes, same log. */
+  const onAgentEvent = useCallback(
+    (event: ChatEventWire) => {
+      if (event.type !== "executed") return;
+      absorb(event.body as Envelope, {
+        method: event.method,
+        path: event.path,
+        amountCents: event.terms?.amountCents ?? null,
+      });
+    },
+    [absorb],
   );
 
   return (
@@ -149,6 +195,15 @@ export default function Console({
             setActive(cmd);
             setArgs({});
           }}
+        />
+
+        <ChatPane
+          agent={agent}
+          capabilities={capabilities}
+          busy={busy}
+          onBusy={setBusy}
+          onLoadCommand={loadCommand}
+          onEnvelope={onAgentEvent}
         />
 
         <CommandPane

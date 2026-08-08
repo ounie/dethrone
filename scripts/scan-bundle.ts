@@ -16,6 +16,19 @@
  * So this scans for **shapes that can only be secrets**: 32-byte hex values, 65-
  * byte signatures, and the bearer-credential names this product refuses to
  * have. If the key were ever inlined, it would match the first pattern.
+ *
+ * ## The agent's keys are a second shape
+ *
+ * Until the chat pane there was exactly one kind of credential here and it was
+ * `0x` and 64 hex characters. An LLM provider key is `sk-` and base62: it
+ * matches none of the four patterns above, and would have shipped in a bundle
+ * that this script called clean. So there are three more below.
+ *
+ * They are deliberately **tight**. The obvious `sk-[A-Za-z0-9_-]{20,}` also
+ * matches inside minified identifiers and webpack chunk hashes, and a scanner
+ * that fires on a correct build is a scanner somebody switches off. Every
+ * pattern here is anchored on a real provider prefix, a length no minifier
+ * produces, or a key-name binding.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -27,6 +40,15 @@ const FORBIDDEN: { name: string; re: RegExp }[] = [
   { name: "a 65-byte signature", re: /0x[0-9a-fA-F]{130,}/ },
   { name: "a participant token", re: /participantToken/ },
   { name: "an x402 payload header value", re: /["'](?:payment-signature|x-payment)["']\s*[:=]\s*["'][A-Za-z0-9+/=]{40,}/ },
+  {
+    name: "an LLM provider API key",
+    re: /\bsk-(?:ant-api\d\d|ant-|or-v1-|proj-)[A-Za-z0-9_-]{20,}/,
+  },
+  { name: "a bare OpenAI-shaped key", re: /\bsk-[A-Za-z0-9]{32,}\b/ },
+  {
+    name: "an api key name bound to a long value",
+    re: /["'](?:api[_-]?key|x-api-key)["']\s*[:=]\s*["'][A-Za-z0-9_.\-]{20,}["']/i,
+  },
 ];
 
 function files(dir: string, out: string[] = []): string[] {

@@ -37,7 +37,8 @@ export type IconName =
   | "rotate-cw"
   | "external-link"
   | "x-mark"
-  | "wallet";
+  | "wallet"
+  | "message-square";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   crown: (
@@ -163,6 +164,9 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" />
       <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
     </>
+  ),
+  "message-square": (
+    <path d="M22 17a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
   ),
   // Drawn to match: 24×24 grid, 2px stroke, round joins — the same hand.
   "alert-triangle": (

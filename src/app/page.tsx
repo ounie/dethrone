@@ -2,9 +2,11 @@ import Console from "@/components/console";
 import type { SeatSnapshot } from "@/components/seat-state";
 import * as arena from "@/lib/arena";
 import { explorerAddressUrl, networkKey, usdcBalance } from "@/lib/chain";
-import type { Capabilities, Capability } from "@/lib/capability";
-import { COMMANDS, type Command } from "@/lib/commands";
+import type { AgentConfig } from "@/lib/agent";
+import { autonomyStore } from "@/lib/chat/autonomy";
+import { providerStatuses } from "@/lib/chat/providers/registry";
 import { config } from "@/lib/config";
+import { capabilities } from "@/lib/registry";
 import { rules } from "@/lib/rules";
 import { spendStore } from "@/lib/spend";
 import { address, hasWallet } from "@/lib/wallet";
@@ -23,49 +25,6 @@ import { address, hasWallet } from "@/lib/wallet";
  * slow one.
  */
 export const dynamic = "force-dynamic";
-
-function capability(
-  cmd: Command,
-  ctx: { hasKey: boolean; allowGenesis: boolean; live: Awaited<ReturnType<typeof rules>> },
-): Capability {
-  const liveCents = cmd.livePrice ? ctx.live.money[cmd.livePrice] : undefined;
-
-  if (cmd.requiresOptIn && !ctx.allowGenesis) {
-    return {
-      enabled: false,
-      reason: `Not registered on this deploy. Set ${cmd.requiresOptIn}=true to add it.`,
-      liveCents,
-    };
-  }
-
-  if ((cmd.tier === "paid" || cmd.tier === "signed") && !ctx.hasKey) {
-    return {
-      enabled: false,
-      reason:
-        cmd.tier === "paid"
-          ? "Read-only: this deploy holds no key, so nothing here can spend."
-          : "Read-only: this deploy holds no key, so nothing here can prove a wallet.",
-      liveCents,
-    };
-  }
-
-  if (cmd.tier === "paid" && !ctx.live.interfaceMatches) {
-    return {
-      enabled: false,
-      reason: `The arena reports ${ctx.live.interfaceVersion}; this console was written against interface-v2. Reads still work; nothing will spend.`,
-      liveCents,
-    };
-  }
-
-  // `duels` is the one flag the canon publishes directly. Everything else is
-  // discovered the honest way — by asking and reading the 404 — rather than
-  // guessed at here, because a guess is the console deciding a rule.
-  if (cmd.requiresFlag === "duels" && ctx.live.reachable && !ctx.live.duel.enabled) {
-    return { enabled: false, reason: "Duels are closed on this server.", liveCents };
-  }
-
-  return { enabled: true, liveCents };
-}
 
 function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -96,14 +55,36 @@ export default async function Page() {
   const me = address();
   const keyed = hasWallet();
 
-  const capabilities: Capabilities = {};
-  for (const cmd of COMMANDS) {
-    capabilities[cmd.id] = capability(cmd, {
-      hasKey: keyed,
-      allowGenesis: cfg.allowGenesis,
-      live,
-    });
-  }
+  // One implementation, shared with the agent's tool surface. See lib/registry.
+  const caps = await capabilities(live);
+
+  // The agent, resolved server-side for the same reason the capabilities are:
+  // the browser is handed verdicts and sentences, never the means to work out
+  // for itself whether a key exists.
+  const providers = await providerStatuses();
+  const firstProvider =
+    providers.find((p) => p.id === cfg.chatDefaultProvider && p.available) ??
+    providers.find((p) => p.available);
+  const autonomy = autonomyStore(me);
+
+  const agent: AgentConfig = {
+    enabled: !!firstProvider,
+    ...(firstProvider
+      ? {}
+      : {
+          reason:
+            "No model provider is configured. Set one of OPENROUTER_API_KEY, ANTHROPIC_API_KEY or OPENAI_COMPATIBLE_BASE_URL in .env.local — or run this console on your own machine, where a Claude Max subscription needs no key at all.",
+        }),
+    providers,
+    defaultProviderId: firstProvider?.id ?? null,
+    defaultModelId: firstProvider?.models[0]?.id ?? null,
+    autonomy: {
+      offerable: autonomy.offerable,
+      ...(autonomy.reason ? { reason: autonomy.reason } : {}),
+      active: autonomy.mode() === "full",
+      perActionCapCents: autonomy.offerable ? cfg.autonomyMaxCents : null,
+    },
+  };
 
   const ledger = await spendStore(me).read();
 
@@ -117,7 +98,8 @@ export default async function Page() {
       <Console
         operator={me}
         baseUrl={cfg.baseUrl}
-        capabilities={capabilities}
+        capabilities={caps}
+        agent={agent}
         forgeNote={live.forgeNote}
         stakeRange={live.duel}
         ceiling={{

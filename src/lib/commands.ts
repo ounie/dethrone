@@ -30,6 +30,19 @@ export const DEFAULT_MAX_SPEND_CENTS = 500;
 /** Above this, a paid command needs an explicit confirmation. Overridden by env. */
 export const DEFAULT_CONFIRM_OVER_CENTS = 100;
 
+/**
+ * The most one *autonomous* action may cost, in cents. Overridden by
+ * CONSOLE_AUTONOMY_MAX_CENTS.
+ *
+ * This is the machine's stand-in for `DEFAULT_CONFIRM_OVER_CENTS`, and the
+ * asymmetry is the point: above the confirm threshold a human is asked and may
+ * say yes, whereas above this cap an agent is simply refused. There is nobody
+ * to ask, so the only safe answer is no. Deliberately far below the sitting
+ * ceiling — a per-action cap equal to the ceiling would let one bad turn spend
+ * the whole sitting, which is not a per-action cap at all.
+ */
+export const DEFAULT_AUTONOMY_MAX_CENTS = 25;
+
 /** `cents` sentinel: the caller names the amount, so the catalogue cannot know it. */
 export const CALLER_PRICED = -1;
 
@@ -779,4 +792,31 @@ export function scopePlaceholders(scope: string): string[] {
 /** A caller-priced command names its own amount, so it always needs a confirmation. */
 export function isCallerPriced(cmd: Command): boolean {
   return cmd.cents === CALLER_PRICED;
+}
+
+/**
+ * The extra field a listing-priced command needs.
+ *
+ * The console cannot know what a listing costs — the arena holds that, and it
+ * arrives in the 402. So the operator names a ceiling instead, and a higher
+ * quote is refused *before anything is signed*. That is the difference between
+ * a seatbelt and a receipt.
+ *
+ * It lives in the catalogue rather than in the form that renders it because the
+ * form is no longer the only thing that needs it: the agent's tool schema is
+ * derived from these same field lists, and a command whose tool omitted
+ * `maxCents` would be a command the model could not name a ceiling for. Two
+ * definitions of one input is the drift this file exists to prevent.
+ */
+export const MAX_FIELD: Field = {
+  name: "maxCents",
+  label: "Maximum you will pay (cents)",
+  kind: "number",
+  hint: "The arena quotes the real price. A higher quote is refused before a signature exists.",
+};
+
+/** Every field a command takes, including the synthesised ceiling. */
+export function fieldsFor(cmd: Command): readonly Field[] {
+  const base = cmd.fields ?? [];
+  return cmd.maxField ? [...base, MAX_FIELD] : base;
 }

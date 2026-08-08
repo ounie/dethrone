@@ -2,12 +2,22 @@ import { describe, expect, it } from "vitest";
 import { assertConsoleConfig, isLoopbackHost, resolveKvRest } from "@/lib/assertions";
 
 /**
- * PRD §9's seven startup assertions, as a table.
+ * PRD §9's startup assertions, as a table. Seven at first; ten since the agent.
  *
  * This is possible only because `assertConsoleConfig` is pure: no process to
  * poison, no module cache to reset, no `vi.stubEnv` to leak into the next case.
  * That was the reason for splitting it from `config.ts`, and this file is the
  * payoff.
+ *
+ * ## Read the `toEqual([])` cases as load-bearing
+ *
+ * A dozen cases here assert *exactly zero* findings, and they are the reason a
+ * new assertion has to be gated on a variable no fixture sets. The failure mode
+ * is specific and tempting: someone adds an unconditional warning — "no chat
+ * provider is configured" is the natural one — a dozen unrelated tests go red
+ * at once, and the cheap fix is to weaken the assertions rather than the
+ * finding. Those empty arrays are what stops the boot check from acquiring
+ * noise until nobody reads it.
  */
 
 const KEY = "0x" + "a".repeat(64);
@@ -209,6 +219,144 @@ describe("6 — no NEXT_PUBLIC_ variable holds a secret", () => {
 
   it("ignores a key that is NOT public-prefixed", () => {
     expect(codes({ DETHRONE_PRIVATE_KEY: KEY })).not.toContain("CONSOLE_PUBLIC_SECRET");
+  });
+
+  // The agent's keys are a different shape from the wallet's, and the 0x test
+  // above cannot see them. Each provider gets a specimen, because "we support
+  // four providers" is exactly the kind of claim that rots.
+  it.each([
+    ["an Anthropic key", "sk-ant-api03-" + "A".repeat(40)],
+    ["an OpenRouter key", "sk-or-v1-" + "b".repeat(48)],
+    ["an OpenAI project key", "sk-proj-" + "C".repeat(40)],
+    ["a bare OpenAI-shaped key", "sk-" + "d".repeat(48)],
+  ])("refuses %s under a public prefix", (_label, value) => {
+    expect(codes({ NEXT_PUBLIC_MODEL_KEY: value })).toContain("CONSOLE_PUBLIC_SECRET");
+  });
+
+  it("refuses a credential-NAMED public variable whatever its value looks like", () => {
+    // The provider after next will have a key shape nobody here has seen. The
+    // name is the part that stays honest.
+    expect(codes({ NEXT_PUBLIC_SOME_VENDOR_API_KEY: "totally-inscrutable-value" })).toContain(
+      "CONSOLE_PUBLIC_SECRET",
+    );
+  });
+
+  it("allows a short public value under a credential-ish name — a placeholder is not a secret", () => {
+    expect(codes({ NEXT_PUBLIC_API_KEY: "unset" })).toEqual([]);
+  });
+
+  it("allows an ordinary public string that merely starts with s", () => {
+    expect(codes({ NEXT_PUBLIC_LABEL: "skirmish" })).toEqual([]);
+  });
+});
+
+describe("8 — the per-action autonomy cap is a cap", () => {
+  it("is silent when unset", () => {
+    expect(assertConsoleConfig({ DETHRONE_PRIVATE_KEY: KEY }, LOOPBACK)).toEqual([]);
+  });
+
+  it("refuses a cap that is not a whole number of cents", () => {
+    expect(codes({ CONSOLE_AUTONOMY_MAX_CENTS: "2.5" })).toContain("CONSOLE_BAD_AUTONOMY_CAP");
+  });
+
+  it("refuses a negative cap", () => {
+    expect(codes({ CONSOLE_AUTONOMY_MAX_CENTS: "-1" })).toContain("CONSOLE_BAD_AUTONOMY_CAP");
+  });
+
+  it("refuses a per-action cap above the sitting ceiling — that is not a cap", () => {
+    expect(
+      codes({ CONSOLE_MAX_SPEND_CENTS: "500", CONSOLE_AUTONOMY_MAX_CENTS: "600" }),
+    ).toContain("CONSOLE_AUTONOMY_ABOVE_CAP");
+  });
+
+  it("allows a per-action cap equal to the ceiling, and below it", () => {
+    expect(codes({ CONSOLE_MAX_SPEND_CENTS: "500", CONSOLE_AUTONOMY_MAX_CENTS: "500" })).toEqual([]);
+    expect(codes({ CONSOLE_MAX_SPEND_CENTS: "500", CONSOLE_AUTONOMY_MAX_CENTS: "25" })).toEqual([]);
+  });
+});
+
+describe("9 — full autonomy is loopback-only", () => {
+  it("refuses an autonomous agent on a serverless deployment holding a key", () => {
+    expect(
+      codes(
+        {
+          VERCEL: "1",
+          VERCEL_ENV: "production",
+          DETHRONE_PRIVATE_KEY: KEY,
+          CONSOLE_PROTECTION_CONFIRMED: "true",
+          CONSOLE_ALLOW_FULL_AUTONOMY: "true",
+        },
+        null,
+      ),
+    ).toContain("CONSOLE_AUTONOMY_REMOTE");
+  });
+
+  it("refuses full autonomy alongside CONSOLE_ALLOW_REMOTE", () => {
+    // ALLOW_REMOTE turns off the per-request loopback check, which is the only
+    // thing keeping the agent on this machine. Together they are vacuous.
+    expect(
+      codes({
+        DETHRONE_PRIVATE_KEY: KEY,
+        CONSOLE_ALLOW_REMOTE: "true",
+        CONSOLE_ALLOW_FULL_AUTONOMY: "true",
+      }),
+    ).toContain("CONSOLE_AUTONOMY_REMOTE");
+  });
+
+  it("allows full autonomy on loopback with a key", () => {
+    expect(codes({ DETHRONE_PRIVATE_KEY: KEY, CONSOLE_ALLOW_FULL_AUTONOMY: "true" })).toEqual([]);
+  });
+
+  it("says nothing on a keyless deploy — there is nothing to grant", () => {
+    expect(
+      assertConsoleConfig({ VERCEL: "1", CONSOLE_ALLOW_FULL_AUTONOMY: "true" }, null),
+    ).toEqual([]);
+  });
+});
+
+describe("10 — a named chat provider can actually run here", () => {
+  it("warns when the named provider's key is absent", () => {
+    expect(warnings({ CONSOLE_CHAT_PROVIDER: "openrouter" })).toContain(
+      "CONSOLE_CHAT_PROVIDER_UNAVAILABLE",
+    );
+  });
+
+  it("names every missing variable, not just the first", () => {
+    const message = assertConsoleConfig({ CONSOLE_CHAT_PROVIDER: "openai-compatible" }, LOOPBACK)
+      .map((f) => f.message)
+      .join("\n");
+    expect(message).toContain("OPENAI_COMPATIBLE_BASE_URL");
+    expect(message).toContain("OPENAI_COMPATIBLE_API_KEY");
+  });
+
+  it("is silent once the provider is configured", () => {
+    expect(
+      assertConsoleConfig(
+        { CONSOLE_CHAT_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "sk-ant-api03-" + "A".repeat(40) },
+        LOOPBACK,
+      ),
+    ).toEqual([]);
+  });
+
+  it("warns that claude-max cannot spawn a subprocess on serverless", () => {
+    expect(warnings({ VERCEL: "1", CONSOLE_CHAT_PROVIDER: "claude-max" }, null)).toContain(
+      "CONSOLE_CHAT_SUBPROCESS_UNAVAILABLE",
+    );
+  });
+
+  it("is silent about claude-max locally — it needs no key at all", () => {
+    expect(assertConsoleConfig({ CONSOLE_CHAT_PROVIDER: "claude-max" }, LOOPBACK)).toEqual([]);
+  });
+
+  it("warns about a provider it has never heard of", () => {
+    expect(warnings({ CONSOLE_CHAT_PROVIDER: "gpt5-oracle" })).toContain(
+      "CONSOLE_CHAT_PROVIDER_UNKNOWN",
+    );
+  });
+
+  it("never fails on a chat misconfiguration — nothing here can spend", () => {
+    expect(codes({ CONSOLE_CHAT_PROVIDER: "openrouter" })).toEqual([]);
+    expect(codes({ CONSOLE_CHAT_PROVIDER: "gpt5-oracle" })).toEqual([]);
   });
 });
 

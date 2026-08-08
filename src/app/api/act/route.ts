@@ -51,6 +51,28 @@ const requestSchema = z.object({
   confirm: z
     .object({ amountCents: z.number(), payer: z.string() })
     .optional(),
+  /**
+   * A caller-supplied confirmation threshold, in cents. It can only ever
+   * TIGHTEN the configured one — `Math.min`, never assignment, exactly like
+   * the ceiling's `tighten`.
+   *
+   * ## Why this exists, and why it is safe to accept from a caller
+   *
+   * The agent has a per-action cap that is much lower than a human's
+   * confirmation threshold, and it needs to know what the arena will charge
+   * *before* anything settles. The only place this route reveals a price is the
+   * 428 — so a paid command below `CONSOLE_CONFIRM_OVER_CENTS` used to execute
+   * without the executor ever seeing the amount, and the per-action cap was
+   * never consulted. That was a real hole, found by running it.
+   *
+   * Accepting a number from the caller looks like the thing this file refuses
+   * to do everywhere else, so the distinction matters: this cannot be used to
+   * skip a confirmation, only to demand one that would not otherwise happen.
+   * The worst a hostile value can do is make the route ask a question. A
+   * request cannot raise the threshold, and cannot reach the value the operator
+   * configured.
+   */
+  confirmOverCents: z.number().int().nonnegative().optional(),
 });
 
 function fail(code: ConsoleErrorCode, detail?: Record<string, unknown>): NextResponse {
@@ -77,6 +99,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!parsed.success) return fail("CONSOLE_UNKNOWN_COMMAND", { reason: "malformed request" });
 
   const { id, args, confirm } = parsed.data;
+  // min(), not assignment. The line that makes the override one-way.
+  const confirmOver = Math.min(cfg.confirmOverCents, parsed.data.confirmOverCents ?? Infinity);
   const cmd = byId(id);
   if (!cmd) return fail("CONSOLE_UNKNOWN_COMMAND", { id });
 
@@ -205,7 +229,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     // is not a thing a test can assert. Above the threshold, or caller-priced
     // at any amount, this route refuses until the operator's echo matches what
     // the server independently computed.
-    const needsConfirm = isCallerPriced(cmd) || cost > cfg.confirmOverCents;
+    const needsConfirm = isCallerPriced(cmd) || cost > confirmOver;
     if (needsConfirm && (confirm?.amountCents !== cost || confirm?.payer !== operator)) {
       return fail("CONSOLE_CONFIRM_REQUIRED", {
         amountCents: cost,
