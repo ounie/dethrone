@@ -1,8 +1,8 @@
 {
   "$comment": "GENERATED — do not edit by hand. Regenerate with `pnpm canon:sync <path-to-apps/web>`. This records the arena's route tree at the commit below; it is a checked-in snapshot, not a source of truth. test/live/canon.live.test.ts is what catches a route deleted after this was taken.",
   "source": "apps/web/src/app/api/**/route.ts",
-  "commit": "65a0865c4c199cfab260ad03a3dcde012d27c397",
-  "routeCount": 47,
+  "commit": "133d3ea98e7c48ba2b6328b9f744a6cc4c08fa91",
+  "routeCount": 49,
   "routes": [
     {
       "path": "/api/agent/[id]",
@@ -74,10 +74,22 @@
       "path": "/api/character/[id]",
       "methods": [
         "GET",
-        "DELETE"
+        "DELETE",
+        "PATCH"
       ],
       "flag": "FORGE_FIRST_ENABLED",
       "signScope": "character:${characterId}",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/character/[id]/actions",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
       "paid": false,
       "adminOnly": false,
       "cronOnly": false
@@ -406,6 +418,17 @@
       "path": "/api/match/[id]",
       "methods": [
         "GET"
+      ],
+      "flag": null,
+      "signScope": "match:${matchId}",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/match/[id]/actions",
+      "methods": [
+        "POST"
       ],
       "flag": null,
       "signScope": "match:${matchId}",

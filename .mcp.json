@@ -6,7 +6,10 @@
     },
     "dethrone-local": {
       "command": "npx",
-      "args": ["-y", "@dethrone/mcp"],
+      "args": [
+        "-y",
+        "@dethrone/mcp@0.1.7"
+      ],
       "env": {
         "DETHRONE_PRIVATE_KEY": "${DETHRONE_PRIVATE_KEY}",
         "DETHRONE_BASE_URL": "https://dethrone.bot",

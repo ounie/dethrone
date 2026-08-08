@@ -1032,6 +1032,168 @@ code {
   color: var(--frozen);
 }
 
+/* ── Action sequence picker ──────────────────────────────────────────────── */
+
+/* The picker needs the whole row: five ordered slots and a sixteen-item menu
+   do not belong in a 220px auto-fit column. */
+.field:has(.picker) {
+  grid-column: 1 / -1;
+  max-width: none;
+}
+
+.picker {
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  padding: var(--s3);
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+.picker-char {
+  width: 15ch;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-xs);
+  background: var(--bg-panel-flat);
+  color: var(--text-display);
+  font-size: 12px;
+}
+
+.window-state {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--gold-300);
+}
+
+.window-state[data-tone="bad"] {
+  color: var(--verdict-loss-fg);
+}
+
+.slots {
+  list-style: none;
+  margin: 0 0 var(--s2);
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 5px 8px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-panel-flat);
+  font-size: 12px;
+}
+
+.slot.empty {
+  display: block;
+  border-style: dashed;
+  font-size: 11.5px;
+}
+
+.slot-n {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  background: rgba(221, 106, 28, 0.14);
+  color: var(--ember-200);
+  font-size: 10px;
+}
+
+.slot-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.slot-index {
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.slot-text {
+  color: var(--text-body);
+}
+
+.type-tag {
+  padding: 0 5px;
+  border: 1px solid var(--border-teal);
+  border-radius: var(--radius-xs);
+  background: rgba(60, 141, 132, 0.08);
+  color: var(--teal-400);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 3px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-top: var(--s2);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.menu-item:hover:not(:disabled) {
+  background: var(--ink-800);
+  color: var(--text-display);
+}
+
+.menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.menu-index {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.menu-text {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ── Response pane ────────────────────────────────────────────────────────── */
 
 .status-chips {

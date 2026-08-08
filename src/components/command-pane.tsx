@@ -1,5 +1,6 @@
 "use client";
 
+import ActionPicker from "./action-picker";
 import CodeBlock from "./code-block";
 import Icon from "./icon";
 import Panel from "./panel";
@@ -59,8 +60,16 @@ function previewBody(cmd: Command, args: Record<string, string>): string | null 
     if (cmd.path.includes(`:${field.name}`) || field.name === "maxCents") continue;
     const raw = (args[field.name] ?? "").trim();
     if (!raw) continue;
-    body[field.name] =
-      field.kind === "number" ? Number(raw) : field.kind === "boolean" ? raw === "true" : raw;
+    if (field.kind === "actions") {
+      try {
+        body[field.name] = JSON.parse(raw);
+      } catch {
+        body[field.name] = raw;
+      }
+    } else {
+      body[field.name] =
+        field.kind === "number" ? Number(raw) : field.kind === "boolean" ? raw === "true" : raw;
+    }
   }
   return JSON.stringify(body, null, 2);
 }
@@ -142,7 +151,14 @@ export default function CommandPane({
                     {field.optional && <span className="optional"> optional</span>}
                   </label>
 
-                  {field.kind === "select" || field.kind === "boolean" ? (
+                  {field.kind === "actions" ? (
+                    <ActionPicker
+                      matchId={args.id ?? ""}
+                      value={args[field.name] ?? ""}
+                      disabled={!capability.enabled}
+                      onChange={(json) => onArg(field.name, json)}
+                    />
+                  ) : field.kind === "select" || field.kind === "boolean" ? (
                     <select
                       id={id}
                       value={args[field.name] ?? ""}

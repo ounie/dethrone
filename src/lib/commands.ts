@@ -33,7 +33,13 @@ export const DEFAULT_CONFIRM_OVER_CENTS = 100;
 /** `cents` sentinel: the caller names the amount, so the catalogue cannot know it. */
 export const CALLER_PRICED = -1;
 
-export type FieldKind = "text" | "number" | "select" | "boolean";
+/**
+ * `actions` is a sequence of menu indices, and it is its own kind because it is
+ * the one input on this screen that a text box cannot honestly represent: the
+ * legal menu is a pure function of a fighter's genome, so the field has to go
+ * and fetch it before it can offer anything.
+ */
+export type FieldKind = "text" | "number" | "select" | "boolean" | "actions";
 
 export interface Field {
   name: string;
@@ -420,6 +426,18 @@ export const COMMANDS: readonly Command[] = [
     note: "The salt is revealed only once the sale is sold out — that is the commitment the manifest exists to make.",
   },
   {
+    id: "legal_actions",
+    label: "Legal actions",
+    tier: "free",
+    group: "Read",
+    method: "GET",
+    path: "/api/character/:id/actions",
+    price: "free",
+    cents: 0,
+    fields: [{ name: "id", label: "Character id", kind: "number" }],
+    note: "The actions this fighter may attempt, and their types. Free on purpose: the menu is a pure function of a public genome, so anyone deriving it locally already has it. Read your opponent's menu before choosing yours — an index is what you submit, and the order is frozen.",
+  },
+  {
     id: "validate_prompt",
     label: "Validate a prompt",
     tier: "free",
@@ -530,6 +548,22 @@ export const COMMANDS: readonly Command[] = [
     requiresFlag: "filmOrders",
     fields: [{ name: "id", label: "Match id" }],
     note: "Open to anyone, not just the participants. Returns 202 — poll the match.",
+  },
+  {
+    id: "submit_actions",
+    label: "Submit your actions",
+    tier: "signed",
+    group: "Fight",
+    method: "POST",
+    path: "/api/match/:id/actions",
+    price: "signed",
+    cents: 0,
+    signScope: "match:{id}",
+    fields: [
+      { name: "id", label: "Match id" },
+      { name: "actions", label: "Your five actions", kind: "actions" },
+    ],
+    note: "Commit one side's five actions during the selection window. Free — the challenge fee already paid for the match. Once per side and not revisable: a second call is refused, because revising inside a sealed window is a guessing game rather than a plan. A missed window is filled by a recorded draw, so silence still fights — it just does not choose. Which side you are is decided by the seat, never by you.",
   },
   {
     id: "exhibition",

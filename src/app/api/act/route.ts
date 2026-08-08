@@ -142,7 +142,24 @@ export async function POST(req: Request): Promise<NextResponse> {
       continue;
     }
 
-    if (field.kind === "number") {
+    if (field.kind === "actions") {
+      // A sequence of menu indices. It arrives as JSON because every arg on the
+      // wire is a string, and it is validated to a homogeneous integer array
+      // here so a malformed pick is a local refusal rather than a 400 from the
+      // arena. The LENGTH and the upper bound are deliberately not checked:
+      // both are the canon's rules, and re-stating them here would be a second
+      // implementation that can disagree.
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        return fail("CONSOLE_BAD_FIELD", { field: field.name, value });
+      }
+      if (!Array.isArray(parsed) || !parsed.every((n) => Number.isInteger(n))) {
+        return fail("CONSOLE_BAD_FIELD", { field: field.name, value });
+      }
+      body[field.name] = parsed;
+    } else if (field.kind === "number") {
       const n = Number(value);
       if (!Number.isFinite(n)) return fail("CONSOLE_BAD_FIELD", { field: field.name, value });
       body[field.name] = n;

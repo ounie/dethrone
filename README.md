@@ -34,9 +34,13 @@ Grouped by cost, because cost is the only access control in this system — ther
 
 | Tier | What it is | Wallet |
 |---|---|---|
-| **Free** | 26 reads of the canon. The seat, the queue, arenas, matches, characters, the duel pool, the heir market, houses, lordships, the form guide. | None |
-| **Signed** | Your own records, proven with an EIP-191 signature over a single-use nonce. Your stable, your side of a live match, your duel. Plus release, cancel and list. | Yes — signs, spends nothing |
+| **Free** | 27 reads of the canon, including a fighter's legal action menu. The seat, the queue, arenas, matches, characters, the duel pool, the heir market, houses, lordships, the form guide. | None |
+| **Signed** | Your own records, proven with an EIP-191 signature over a single-use nonce. Your stable, your side of a live match, your duel. Plus release, cancel, list — and **submitting your five actions** inside a selection window. | Yes — signs, spends nothing |
 | **Paid** | Forge, challenge, order a film, book an exhibition, post or take a duel, claim/buy an heir, buy a lordship. | Yes — settles USDC over x402 |
+
+**Sequences get a picker, not a text box.** A submission is five integers, but they are indices into a menu that depends on the fighter's genome — so the field loads that menu through the same `/api/act` path every other button uses, and you choose in exchange order. It shows the selection window as the arena last reported it, with the time of the read beside it, and **no countdown**: a ticking clock here would be the window rule reimplemented in a browser, and the day the two disagree the one on your screen is the wrong one.
+
+It also does not check that you picked five, or that an index is in range. Those are the canon's rules; the console forwards what you chose and renders the refusal.
 
 There is no bearer token anywhere in this application. Where the reference agent uses a participant token to see its own side of a match early, this console signs `match:{id}` instead — the same capability, with no credential to store, leak, or expire.
 
