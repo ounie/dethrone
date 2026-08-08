@@ -543,9 +543,59 @@ code {
 }
 
 .meter-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
   margin: 7px 0 0;
   font-size: 11px;
   color: var(--text-faint);
+}
+
+.meter-hint {
+  margin: 5px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--parchment-600);
+}
+
+.meter-hint code {
+  font-size: 9.5px;
+  color: var(--parchment-500);
+  background: transparent;
+  padding: 0;
+}
+
+.tighten {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.tighten input {
+  width: 8ch;
+  min-height: 26px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-display);
+  font-size: 11.5px;
+}
+
+.tighten input:focus {
+  border-color: var(--border-ember);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .meter-note {

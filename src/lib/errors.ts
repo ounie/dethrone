@@ -38,6 +38,8 @@ export const CONSOLE_ERROR_CODES = [
   "CONSOLE_INTERFACE_MISMATCH",
   /** This command is not registered on this deploy (e.g. genesis without the flag). */
   "CONSOLE_COMMAND_DISABLED",
+  /** The ceiling cannot bound a sitting here, so it cannot be tightened either. */
+  "CONSOLE_CEILING_DISABLED",
   /**
    * The transport died *after* a payment payload was signed, and the single
    * identical replay also failed. The authorization may or may not have settled.
@@ -75,6 +77,7 @@ export const CONSOLE_ERROR_STATUS: Record<ConsoleErrorCode, number> = {
   CONSOLE_REMOTE_HOST: 403,
   CONSOLE_INTERFACE_MISMATCH: 409,
   CONSOLE_COMMAND_DISABLED: 409,
+  CONSOLE_CEILING_DISABLED: 409,
   CONSOLE_PAYMENT_INFLIGHT: 502,
   CONSOLE_TRANSPORT: 502,
 };
@@ -104,6 +107,8 @@ export const CONSOLE_ERROR_ENGLISH: Record<ConsoleErrorCode, string> = {
   CONSOLE_INTERFACE_MISMATCH:
     "The arena reports a different interface version. Reads still work; nothing will spend.",
   CONSOLE_COMMAND_DISABLED: "This command is not registered on this deploy.",
+  CONSOLE_CEILING_DISABLED:
+    "The ceiling is disabled on this deploy, so there is nothing to tighten. It cannot bound a sitting here.",
   CONSOLE_PAYMENT_INFLIGHT:
     "The connection died after a payment was signed. Re-read the canon before doing anything else — do not re-run this command.",
   CONSOLE_TRANSPORT: "The arena could not be reached. Nothing was signed.",

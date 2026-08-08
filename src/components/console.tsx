@@ -138,6 +138,7 @@ export default function Console({
         reachable={seat.reachable}
         ceiling={live}
         wallet={wallet}
+        onTightened={(cap) => setLive((prev) => ({ ...prev, capCents: cap }))}
       />
 
       <div className="console">

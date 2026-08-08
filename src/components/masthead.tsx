@@ -123,18 +123,93 @@ function WalletCard({ wallet }: { wallet: Wallet }) {
   );
 }
 
+/**
+ * Lower the ceiling for this sitting.
+ *
+ * One-way on purpose, and the button says so. A control that could raise the
+ * cap at the moment the cap stopped you would defeat the thing entirely — the
+ * failure mode is specific and it is one click long. Raising lives in
+ * `.env.local` behind a restart, which is an act you have to mean, and the hint
+ * beneath names the variable so nobody has to go looking.
+ */
+function TightenControl({
+  capCents,
+  onTightened,
+}: {
+  capCents: number;
+  onTightened: (cap: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  if (!open) {
+    return (
+      <button type="button" className="icon-btn" onClick={() => setOpen(true)}>
+        <Icon name="lock" size={12} />
+        Lower
+      </button>
+    );
+  }
+
+  return (
+    <form
+      className="tighten"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const cents = Number(value);
+        if (!Number.isInteger(cents) || cents <= 0) return;
+        setBusy(true);
+        void fetch("/api/ceiling", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ capCents: cents }),
+        })
+          .then((r) => r.json())
+          .then((d: { ceiling?: { cap?: number } }) => {
+            if (typeof d.ceiling?.cap === "number") onTightened(d.ceiling.cap);
+            setOpen(false);
+            setValue("");
+          })
+          .finally(() => setBusy(false));
+      }}
+    >
+      <label htmlFor="tighten-cap" className="visually-hidden">
+        New ceiling in cents, lower than {capCents}
+      </label>
+      <input
+        id="tighten-cap"
+        className="num"
+        inputMode="numeric"
+        placeholder={`< ${capCents}`}
+        value={value}
+        autoFocus
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <button type="submit" className="icon-btn" disabled={busy}>
+        {busy ? "…" : "Set"}
+      </button>
+      <button type="button" className="icon-btn" onClick={() => setOpen(false)}>
+        <Icon name="x-mark" size={12} />
+      </button>
+    </form>
+  );
+}
+
 export default function Masthead({
   baseUrl,
   operator,
   reachable,
   ceiling,
   wallet,
+  onTightened,
 }: {
   baseUrl: string;
   operator: string | null;
   reachable: boolean;
   ceiling: Ceiling;
   wallet: Wallet | null;
+  onTightened: (cap: number) => void;
 }) {
   const remaining = Math.max(0, ceiling.capCents - ceiling.spentCents);
   const used = pct(ceiling.spentCents, ceiling.capCents);
@@ -190,8 +265,15 @@ export default function Masthead({
             >
               <div className="meter-fill" style={{ width: `${used}%` }} />
             </div>
-            <p className="meter-foot num">
-              {money(ceiling.spentCents)} spent ({used.toFixed(1)}%)
+            <div className="meter-foot">
+              <span className="num">
+                {money(ceiling.spentCents)} spent ({used.toFixed(1)}%)
+              </span>
+              <TightenControl capCents={ceiling.capCents} onTightened={onTightened} />
+            </div>
+            <p className="meter-hint">
+              Lowering applies to this sitting only. To raise it, set{" "}
+              <code>CONSOLE_MAX_SPEND_CENTS</code> in <code>.env.local</code> and restart.
             </p>
           </>
         ) : (

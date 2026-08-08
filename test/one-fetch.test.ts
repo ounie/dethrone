@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { SRC, read, rel, sourceFiles, ts, visitFile } from "./graph";
 
 /**
@@ -14,14 +15,36 @@ import { SRC, read, rel, sourceFiles, ts, visitFile } from "./graph";
 
 const ARENA = join(SRC, "lib/arena.ts");
 
-/** Same-origin calls to the console's own route are not calls to the canon. */
-function isOwnRoute(node: ts.CallExpression): boolean {
+/**
+ * The console's own same-origin routes, and why each is allowed to exist.
+ *
+ * This is an ALLOWLIST, not a prefix match, so adding a third route is a
+ * deliberate edit to this file rather than something that slips in. The rule
+ * being protected is about the canon: only `arena.ts` may reach
+ * `DETHRONE_BASE_URL`. A same-origin route can qualify only if it cannot
+ * attach a payment, mint a signature, or let a spend go uncounted.
+ */
+const OWN_ROUTES: { path: string; why: string }[] = [
+  { path: "/api/act", why: "The one execution path. Everything that reaches the canon goes here." },
+  {
+    path: "/api/ceiling",
+    why: "Tightens the local spend ceiling. Makes no outbound request, holds no key, and can only ever LOWER the cap — test/ceiling-route.test.ts pins that.",
+  },
+];
+
+function literalTarget(node: ts.CallExpression): string | null {
   const first = node.arguments[0];
-  if (!first) return false;
-  if (ts.isStringLiteral(first)) return first.text.startsWith("/api/act");
-  if (ts.isTemplateExpression(first)) return first.head.text.startsWith("/api/act");
-  if (ts.isNoSubstitutionTemplateLiteral(first)) return first.text.startsWith("/api/act");
-  return false;
+  if (!first) return null;
+  if (ts.isStringLiteral(first)) return first.text;
+  if (ts.isTemplateExpression(first)) return first.head.text;
+  if (ts.isNoSubstitutionTemplateLiteral(first)) return first.text;
+  return null;
+}
+
+/** Same-origin calls to the console's own routes are not calls to the canon. */
+function isOwnRoute(node: ts.CallExpression): boolean {
+  const target = literalTarget(node);
+  return target !== null && OWN_ROUTES.some((r) => target.startsWith(r.path));
 }
 
 function isFetchCall(node: ts.Node): node is ts.CallExpression {
@@ -97,15 +120,40 @@ describe("exactly one door to the canon", () => {
     ).toEqual([]);
   });
 
-  it("the client makes exactly one kind of request, and it is to /api/act", () => {
-    const clientFetches: string[] = [];
+  it("the client only ever calls the console's own routes", () => {
+    const offenders: string[] = [];
+    let total = 0;
     for (const file of sourceFiles(join(SRC, "components"))) {
       visitFile(file, (node) => {
-        if (isFetchCall(node)) clientFetches.push(isOwnRoute(node) ? "own" : rel(file));
+        if (!isFetchCall(node)) return;
+        total++;
+        if (!isOwnRoute(node)) offenders.push(`${rel(file)} → ${literalTarget(node) ?? "<dynamic>"}`);
       });
     }
-    expect(clientFetches.every((f) => f === "own")).toBe(true);
+    expect(offenders, `the client reaches somewhere unaccounted for: ${offenders.join(", ")}`).toEqual([]);
     // And there is at least one, or the test is vacuous.
-    expect(clientFetches.length).toBeGreaterThan(0);
+    expect(total).toBeGreaterThan(0);
+  });
+
+  it("every allowed own-route exists and carries a stated reason", () => {
+    for (const route of OWN_ROUTES) {
+      const handler = join(SRC, "app", route.path.slice(1), "route.ts");
+      expect(
+        existsSync(handler),
+        `${route.path} is allowlisted but has no handler — delete the entry`,
+      ).toBe(true);
+      expect(route.why.length, `${route.path} has no reason`).toBeGreaterThan(30);
+    }
+  });
+
+  it("only /api/act is allowed to reach the canon", () => {
+    // The other own-routes must not import the module that talks to the arena.
+    for (const route of OWN_ROUTES) {
+      if (route.path === "/api/act") continue;
+      const source = read(join(SRC, "app", route.path.slice(1), "route.ts"));
+      expect(source, `${route.path} imports arena.ts`).not.toMatch(/from "@\/lib\/arena"/);
+      expect(source, `${route.path} imports pay.ts`).not.toMatch(/from "@\/lib\/pay"/);
+      expect(source, `${route.path} imports sign.ts`).not.toMatch(/from "@\/lib\/sign"/);
+    }
   });
 });
