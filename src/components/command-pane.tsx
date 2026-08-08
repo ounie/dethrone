@@ -1,32 +1,36 @@
 "use client";
 
+import CodeBlock from "./code-block";
+import Icon from "./icon";
+import Panel from "./panel";
 import type { Capability, StakeRange } from "@/lib/capability";
 import { isCallerPriced, type Command, type Field } from "@/lib/commands";
+import { money } from "@/lib/format";
 
 /**
  * One command: the resolved route, the note verbatim, the inputs, one button.
  *
- * The button's label states the consequence rather than the action: "Run" when
- * nothing is at stake, and "Run — settles …" naming the live amount when it
- * does. A button that says only "Run" on a screen where half the buttons spend
- * money is a button that will eventually be clicked by someone who meant the
- * other kind.
+ * The button states the consequence rather than the action: "Run" when nothing
+ * is at stake, and "Run — settles …" naming the live figure the arena published
+ * when it does. A button reading only "Run" on a screen where half of them
+ * spend money is a button that will eventually be pressed by someone who meant
+ * the other kind.
  *
- * Every amount rendered here arrived from the server. Nothing on this screen is
- * computed, which is what lets `test/currency-literals.test.ts` refuse a
- * currency literal anywhere under `src/components/` with no exceptions.
+ * It is also the ONLY ember-glowing element on the screen. Ember is not a
+ * brand colour to be sprinkled; it means "this moves money", and it stops
+ * meaning that the moment a second thing wears it.
+ *
+ * Every amount here arrived from the server. Nothing on this screen is
+ * computed, which is what lets `test/currency-literals.test.ts` run with an
+ * empty allowlist.
  */
-
-function money(cents: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
-}
 
 /**
  * The extra field a listing-priced command needs.
  *
  * The console cannot know what a listing costs — the arena holds that, and it
- * arrives in the 402. So the operator names a ceiling instead, and the offer is
- * refused above it *before anything is signed*. That is the difference between
+ * arrives in the 402. So the operator names a ceiling instead, and a higher
+ * quote is refused *before anything is signed*. That is the difference between
  * a seatbelt and a receipt.
  */
 const MAX_FIELD: Field = {
@@ -44,7 +48,21 @@ function fieldsFor(cmd: Command): readonly Field[] {
 function stakeHint(cmd: Command, range: StakeRange): string | undefined {
   if (cmd.id !== "post_duel") return undefined;
   if (range.minStakeCents === null || range.maxStakeCents === null) return undefined;
-  return `The arena currently accepts ${range.minStakeCents}–${range.maxStakeCents}¢.`;
+  return `The arena currently accepts ${range.minStakeCents}–${range.maxStakeCents} cents.`;
+}
+
+/** What will actually be sent, shown before it is sent. */
+function previewBody(cmd: Command, args: Record<string, string>): string | null {
+  if (cmd.method === "GET") return null;
+  const body: Record<string, unknown> = {};
+  for (const field of fieldsFor(cmd)) {
+    if (cmd.path.includes(`:${field.name}`) || field.name === "maxCents") continue;
+    const raw = (args[field.name] ?? "").trim();
+    if (!raw) continue;
+    body[field.name] =
+      field.kind === "number" ? Number(raw) : field.kind === "boolean" ? raw === "true" : raw;
+  }
+  return JSON.stringify(body, null, 2);
 }
 
 export default function CommandPane({
@@ -67,89 +85,140 @@ export default function CommandPane({
   onRun: () => void;
 }) {
   const fields = fieldsFor(cmd);
+  const paid = cmd.tier === "paid";
 
   // Where the canon publishes its own sentence about a command, that sentence
-  // wins. The catalogue's copy is a fallback for when the arena is unreachable.
+  // wins. The catalogue's copy is the fallback for an unreachable arena.
   const note = cmd.id === "forge" && forgeNote ? forgeNote : cmd.note;
 
-  const paid = cmd.tier === "paid";
+  const priceText =
+    capability.liveCents !== undefined
+      ? money(capability.liveCents)
+      : isCallerPriced(cmd)
+        ? "quoted"
+        : cmd.price;
+
   const label = busy
     ? "Working…"
     : !paid
       ? "Run"
-      : capability.liveCents !== undefined
-        ? `Run — settles ${money(capability.liveCents)}`
-        : isCallerPriced(cmd)
-          ? "Run — settles the quoted price"
-          : `Run — settles ${cmd.price}`;
+      : isCallerPriced(cmd) && capability.liveCents === undefined
+        ? "Run — settles the quoted price"
+        : `Run — settles ${priceText}`;
+
+  const body = previewBody(cmd, args);
 
   return (
-    <section className="pane" aria-label="Command">
-      <div className="route">
-        <span className="method">{cmd.method}</span>
-        <code>{cmd.path}</code>
+    <Panel
+      icon="swords"
+      title="Command"
+      className="pane-command"
+      actions={
+        <span className="price-badge" data-tier={cmd.tier}>
+          <span className="eyebrow">Price</span>
+          <span className="num">{priceText}</span>
+        </span>
+      }
+    >
+      <div className="pane-body">
+        <p className="route">
+          <span className="route-method" data-method={cmd.method}>
+            {cmd.method}
+          </span>{" "}
+          <span className="route-path">{cmd.path}</span>
+        </p>
+
+        {note && <p className="note">{note}</p>}
+
+        {fields.length > 0 && (
+          <div className="fields">
+            {fields.map((field) => {
+              const hint = field.hint ?? stakeHint(cmd, stakeRange);
+              const id = `f-${cmd.id}-${field.name}`;
+              return (
+                <div className="field" key={field.name}>
+                  <label htmlFor={id}>
+                    {field.label}
+                    {field.optional && <span className="optional"> optional</span>}
+                  </label>
+
+                  {field.kind === "select" || field.kind === "boolean" ? (
+                    <select
+                      id={id}
+                      value={args[field.name] ?? ""}
+                      disabled={!capability.enabled}
+                      aria-describedby={hint ? `${id}-hint` : undefined}
+                      onChange={(e) => onArg(field.name, e.target.value)}
+                    >
+                      {field.kind === "boolean" ? (
+                        <>
+                          <option value="">no</option>
+                          <option value="true">yes</option>
+                        </>
+                      ) : (
+                        (field.options ?? []).map((option) => (
+                          <option key={option} value={option}>
+                            {option === "" ? "— any —" : option}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  ) : (
+                    <input
+                      id={id}
+                      value={args[field.name] ?? ""}
+                      placeholder={field.placeholder ?? ""}
+                      inputMode={field.kind === "number" ? "numeric" : "text"}
+                      disabled={!capability.enabled}
+                      aria-describedby={hint ? `${id}-hint` : undefined}
+                      onChange={(e) => onArg(field.name, e.target.value)}
+                    />
+                  )}
+
+                  {hint && (
+                    <p className="field-hint" id={`${id}-hint`}>
+                      {hint}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {body && body !== "{}" && (
+          <div className="sub-panel">
+            <div className="sub-head">
+              <span className="eyebrow">
+                <Icon name="file-text" size={12} /> JSON body
+              </span>
+            </div>
+            <CodeBlock text={body} ariaLabel="Request body" />
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="run"
+          data-paid={paid}
+          disabled={busy || !capability.enabled}
+          onClick={onRun}
+        >
+          <Icon name={paid ? "coins" : "terminal"} size={16} />
+          {label}
+        </button>
+
+        {paid && capability.enabled && (
+          <p className="run-foot">This requests a USDC payment over x402 and settles on success.</p>
+        )}
+
+        {!capability.enabled && capability.reason && (
+          <p className="disabled-reason">
+            <Icon name="lock" size={13} />
+            <span>{capability.reason}</span>
+          </p>
+        )}
       </div>
-
-      {note && <p className="note">{note}</p>}
-
-      {fields.map((field) => {
-        const hint = field.hint ?? stakeHint(cmd, stakeRange);
-        return (
-          <label className="field" key={field.name}>
-            <span>
-              {field.label}
-              {field.optional ? " (optional)" : ""}
-            </span>
-
-            {field.kind === "select" ? (
-              <select
-                value={args[field.name] ?? ""}
-                disabled={!capability.enabled}
-                onChange={(e) => onArg(field.name, e.target.value)}
-              >
-                {(field.options ?? []).map((option) => (
-                  <option key={option} value={option}>
-                    {option === "" ? "— any —" : option}
-                  </option>
-                ))}
-              </select>
-            ) : field.kind === "boolean" ? (
-              <select
-                value={args[field.name] ?? ""}
-                disabled={!capability.enabled}
-                onChange={(e) => onArg(field.name, e.target.value)}
-              >
-                <option value="">— no —</option>
-                <option value="true">yes</option>
-              </select>
-            ) : (
-              <input
-                value={args[field.name] ?? ""}
-                placeholder={field.placeholder ?? ""}
-                inputMode={field.kind === "number" ? "numeric" : "text"}
-                disabled={!capability.enabled}
-                onChange={(e) => onArg(field.name, e.target.value)}
-              />
-            )}
-
-            {hint && <span className="field-hint">{hint}</span>}
-          </label>
-        );
-      })}
-
-      <button
-        type="button"
-        className="run"
-        data-paid={paid}
-        disabled={busy || !capability.enabled}
-        onClick={onRun}
-      >
-        {label}
-      </button>
-
-      {!capability.enabled && capability.reason && (
-        <p className="disabled-reason">{capability.reason}</p>
-      )}
-    </section>
+    </Panel>
   );
 }

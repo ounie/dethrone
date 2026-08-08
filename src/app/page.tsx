@@ -1,24 +1,25 @@
-import Image from "next/image";
 import Console from "@/components/console";
+import type { SeatSnapshot } from "@/components/seat-state";
 import * as arena from "@/lib/arena";
 import type { Capabilities, Capability } from "@/lib/capability";
 import { COMMANDS, type Command } from "@/lib/commands";
 import { config } from "@/lib/config";
 import { rules } from "@/lib/rules";
+import { spendStore } from "@/lib/spend";
 import { address, hasWallet } from "@/lib/wallet";
 
 /**
  * The one server component.
  *
- * It resolves the three facts the header states — base URL, operator address,
- * seat reachability — and computes, on the server, which commands this deploy
- * can actually run. The browser receives that verdict as data. **It never
- * receives a key, a signature-producing capability, or the means to decide for
- * itself that a paid command is available.**
+ * It reads the seat, resolves which commands this deploy can actually run, and
+ * hands the browser a verdict. **The browser never receives a key, a
+ * signature-producing capability, or the means to decide for itself that a paid
+ * command is available.** It receives an address, which is public, and a set of
+ * booleans somebody else computed.
  *
- * `force-dynamic` because every number on this screen is money. A cached seat
- * read rendering a stale pot is a wrong number, and a wrong number is worse
- * than a slow one.
+ * `force-dynamic` because every number here is money. A cached seat read
+ * showing a stale pot is a wrong number, and a wrong number is worse than a
+ * slow one.
  */
 export const dynamic = "force-dynamic";
 
@@ -65,12 +66,31 @@ function capability(
   return { enabled: true, liveCents };
 }
 
+function str(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** Whatever the seat read returned, labelled. Nothing derived, nothing ticked. */
+function snapshot(body: unknown, reachable: boolean, fetchedAtIso: string): SeatSnapshot {
+  const seat = (body ?? {}) as Record<string, unknown>;
+  return {
+    fetchedAtIso,
+    reachable,
+    champion: str(seat.champion),
+    tookSeatAt: str(seat.tookSeatAt),
+    tenureDefenses: typeof seat.tenureDefenses === "number" ? seat.tenureDefenses : null,
+    jackpotUsdc: str(seat.currentJackpotUsdc),
+    liveMatchId: str(seat.liveMatchId),
+    network: str(seat.network),
+  };
+}
+
 export default async function Page() {
   const cfg = config();
   const live = await rules();
 
-  const seat = await arena.call({ method: "GET", path: "/api/seat", paid: false });
-  const reachable = seat.result?.ok === true;
+  const seatRead = await arena.call({ method: "GET", path: "/api/seat", paid: false });
+  const reachable = seatRead.result?.ok === true;
 
   const me = address();
   const keyed = hasWallet();
@@ -84,52 +104,24 @@ export default async function Page() {
     });
   }
 
+  const ledger = await spendStore(me).read();
+
   return (
     <div className="shell">
-      <header className="masthead">
-        <div className="masthead-lockup">
-          {/* Artwork, not an icon. The adjacent text carries the whole claim. */}
-          <Image src="/brand/logo-crown.webp" alt="" width={512} height={452} priority />
-          <span className="display wordmark">Console</span>
-        </div>
-
-        <dl className="fact">
-          <dt>Arena</dt>
-          <dd title={cfg.baseUrl}>{cfg.baseUrl}</dd>
-        </dl>
-
-        <dl className="fact">
-          <dt>Operator</dt>
-          <dd data-tone={me ? undefined : "readonly"} title={me ?? undefined}>
-            {me ?? "read-only — no key set"}
-          </dd>
-        </dl>
-
-        <dl className="fact">
-          <dt>Seat</dt>
-          <dd data-tone={reachable ? "ok" : "bad"}>{reachable ? "reachable" : "unreachable"}</dd>
-        </dl>
-
-        <dl className="fact">
-          <dt>Ceiling</dt>
-          <dd
-            data-tone={cfg.ceilingEnabled ? undefined : "warn"}
-            title={cfg.ceilingDisabledReason}
-          >
-            {/* Never a number when it cannot bound a sitting. A disabled seatbelt
-                that announces itself beats one that silently resets. */}
-            {cfg.ceilingEnabled ? `${cfg.maxSpendCents}¢ / sitting` : "disabled"}
-          </dd>
-        </dl>
-      </header>
-
       {/* The address is public. The key never crosses this boundary. */}
       <Console
         operator={me}
+        baseUrl={cfg.baseUrl}
         capabilities={capabilities}
         forgeNote={live.forgeNote}
         stakeRange={live.duel}
-        ceilingEnabled={cfg.ceilingEnabled}
+        ceiling={{
+          enabled: cfg.ceilingEnabled,
+          spentCents: ledger?.spentCents ?? 0,
+          capCents: ledger?.cap ?? cfg.maxSpendCents,
+          reason: cfg.ceilingDisabledReason,
+        }}
+        seat={snapshot(seatRead.result?.body, reachable, new Date().toISOString())}
       />
 
       <footer className="footnote">

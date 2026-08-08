@@ -1,5 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import CodeBlock from "./code-block";
+import Icon from "./icon";
+import Panel from "./panel";
 import { CONSOLE_ERROR_ENGLISH, type ConsoleErrorCode } from "@/lib/errors";
 import { RETRY_SAFETY, isCanonErrorBody, isCanonErrorCode } from "@/lib/interface";
 
@@ -7,13 +11,13 @@ import { RETRY_SAFETY, isCanonErrorBody, isCanonErrorCode } from "@/lib/interfac
  * The raw envelope.
  *
  * Never a summary, never an interpretation. A JSON pane is the honest rendering
- * of a system whose entire contract is a documented body: anything this pane
- * paraphrased would be a second opinion about what the arena said, and on the
- * day the two disagree the paraphrase is the one that is wrong.
+ * of a system whose entire contract is a documented body: anything paraphrased
+ * here would be a second opinion about what the arena said, and on the day the
+ * two disagree the paraphrase is the one that is wrong.
  *
- * The only thing lifted out of the body is `error.code`, promoted to a headline
- * — because a code is the thing to branch on and a message is not. English
- * drifts; codes don't.
+ * Exactly one thing is lifted out of the body, and it is `error.code` — because
+ * a code is the thing to branch on and a message is not. English drifts; codes
+ * don't.
  */
 
 export interface Envelope {
@@ -29,20 +33,17 @@ export interface Envelope {
   error?: { code: string; message: string; detail?: Record<string, unknown> };
 }
 
-function statusTone(status?: number): string {
+function statusTone(status?: number): "ok" | "bad" | "muted" {
   if (status === undefined) return "muted";
-  if (status < 300) return "ok";
-  if (status < 500) return "bad";
-  return "bad";
+  return status < 300 ? "ok" : "bad";
 }
 
 /**
- * The code to show, and where it came from.
+ * Which namespace answered, and why the difference matters.
  *
- * Two disjoint namespaces meet here and the difference matters: a `CONSOLE_`
- * code means this app stopped the request before it reached the arena, so
- * nothing happened and nothing was charged. Any other code means the arena
- * answered — and one of those answers may have cost money.
+ * A `CONSOLE_` code means this app stopped the request before it reached the
+ * arena — nothing happened and nothing was charged. Any other code means the
+ * arena answered, and one of those answers may have cost money.
  */
 function extractCode(env: Envelope): { code: string; message: string; origin: string } | null {
   if (env.error) {
@@ -66,75 +67,111 @@ function extractCode(env: Envelope): { code: string; message: string; origin: st
   return null;
 }
 
-export default function ResponsePane({ envelope, log }: { envelope: Envelope | null; log: string[] }) {
+const TABS = ["Body", "Envelope", "Raw"] as const;
+type Tab = (typeof TABS)[number];
+
+export default function ResponsePane({ envelope }: { envelope: Envelope | null }) {
+  const [tab, setTab] = useState<Tab>("Body");
+  const [copied, setCopied] = useState(false);
+
   if (!envelope) {
     return (
-      <section className="pane pane-response" aria-label="Response">
-        <pre className="out">
-          {"No response yet.\n\nReads are free and need no wallet — start with “The seat”."}
-        </pre>
-      </section>
+      <Panel icon="shield-check" title="Response" className="pane-response">
+        <div className="pane-body empty">
+          <Icon name="shield-check" size={26} />
+          <p>No response yet.</p>
+          <p className="muted">Reads are free and need no wallet — start with the seat.</p>
+        </div>
+      </Panel>
     );
   }
 
   const code = extractCode(envelope);
+  const raw = JSON.stringify(envelope, null, 2);
+  const shown =
+    tab === "Body"
+      ? JSON.stringify(envelope.body ?? envelope.error ?? null, null, 2)
+      : tab === "Envelope"
+        ? JSON.stringify({ ...envelope, body: undefined }, null, 2)
+        : raw;
 
   return (
-    <section className="pane pane-response" aria-label="Response">
-      <div className="meta">
-        <div>
-          <span className="k">Status</span>
-          <span className="v" data-tone={statusTone(envelope.status)}>
-            {envelope.status ?? "—"}
+    <Panel
+      icon="shield-check"
+      title="Response"
+      className="pane-response"
+      actions={
+        <button
+          type="button"
+          className="icon-btn labelled"
+          onClick={() => {
+            void navigator.clipboard.writeText(raw);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1400);
+          }}
+        >
+          <Icon name={copied ? "shield-check" : "copy"} size={13} />
+          {copied ? "Copied" : "Copy"}
+        </button>
+      }
+    >
+      <div className="pane-body">
+        <div className="status-chips">
+          <span className="status-chip" data-tone={statusTone(envelope.status)}>
+            <span className="num">{envelope.status ?? "—"}</span>
           </span>
-        </div>
-        <div>
-          <span className="k">Latency</span>
-          <span className="v">{envelope.ms !== undefined ? `${envelope.ms}ms` : "—"}</span>
-        </div>
-        <div>
-          <span className="k">Settled</span>
-          <span className="v" data-tone={envelope.settled ? "ember" : "muted"}>
-            {envelope.settled ? "true" : "false"}
+          <span className="status-chip">
+            <span className="num">{envelope.ms !== undefined ? `${envelope.ms} ms` : "—"}</span>
           </span>
-        </div>
-        <div>
-          <span className="k">Spent this sitting</span>
-          <span className="v" data-tone={envelope.ceiling?.enabled ? undefined : "muted"}>
-            {envelope.ceiling?.enabled
-              ? `${envelope.ceiling.spentCents ?? 0} / ${envelope.ceiling.cap ?? 0}¢`
-              : "not counted"}
+          <span className="status-chip" data-tone={envelope.settled ? "ember" : undefined}>
+            settled: <span className="num">{envelope.settled ? "true" : "false"}</span>
           </span>
-        </div>
-        {envelope.interface && !envelope.interface.match && (
-          <div>
-            <span className="k">Interface</span>
-            <span className="v" data-tone="bad">
-              {envelope.interface.got ?? "absent"}
+          {envelope.ceiling?.enabled && (
+            <span className="status-chip">
+              spent:{" "}
+              <span className="num">
+                {envelope.ceiling.spentCents ?? 0}/{envelope.ceiling.cap ?? 0}¢
+              </span>
             </span>
-          </div>
-        )}
-      </div>
-
-      {code && (
-        <div className="code-banner">
-          <span className="code">{code.code}</span>
-          <p>{code.message}</p>
-          <p>
-            <span className="eyebrow">From {code.origin}</span>
-          </p>
-          {envelope.featureDisabled && (
-            <p>
-              This route exists and the arena is refusing it — a feature is switched off on this
-              server. That is different from a route that is not there at all.
-            </p>
+          )}
+          {envelope.interface && !envelope.interface.match && (
+            <span className="status-chip" data-tone="bad">
+              interface: {envelope.interface.got ?? "absent"}
+            </span>
           )}
         </div>
-      )}
 
-      <pre className="out">{JSON.stringify(envelope, null, 2)}</pre>
+        {code && (
+          <div className="code-banner" data-local={code.code.startsWith("CONSOLE_")}>
+            <p className="banner-code num">{code.code}</p>
+            <p>{code.message}</p>
+            <p className="eyebrow">From {code.origin}</p>
+            {envelope.featureDisabled && (
+              <p>
+                The route exists and the arena is refusing it — a feature is switched off on this
+                server. That is a different thing from a route that is not there.
+              </p>
+            )}
+          </div>
+        )}
 
-      {log.length > 0 && <pre className="log">{log.join("\n")}</pre>}
-    </section>
+        <div className="tabs" role="tablist" aria-label="Response view">
+          {TABS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              className="tab"
+              onClick={() => setTab(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <CodeBlock text={shown} maxHeight="46vh" ariaLabel={`Response ${tab}`} />
+      </div>
+    </Panel>
   );
 }

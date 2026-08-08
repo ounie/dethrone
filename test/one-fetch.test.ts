@@ -47,25 +47,27 @@ describe("exactly one door to the canon", () => {
     expect(offenders, `these files read the base URL directly: ${offenders.join(", ")}`).toEqual([]);
   });
 
-  it("only arena.ts both holds the base URL and calls fetch", () => {
-    // Reading the base URL to *display* it is fine — the header states which
-    // arena this console is pointed at, and that is a fact the operator needs.
-    // What must be unique is the combination: holding the address of the canon
-    // and being able to send something to it.
+  it("only arena.ts both holds the base URL and can send somewhere other than /api/act", () => {
+    // Reading the base URL to *display* it is fine, and the masthead does
+    // exactly that — which arena this console points at is a fact the operator
+    // needs. Fetching the console's own route is fine too; that is how every
+    // button works.
+    //
+    // What must be unique is the dangerous combination: holding the canon's
+    // address AND being able to send to somewhere that is not this app. Testing
+    // for `baseUrl && fetch` was too coarse and flagged the component that does
+    // both harmless things at once.
     const offenders: string[] = [];
     for (const file of sourceFiles()) {
       if (file === ARENA) continue;
-      const source = read(file);
-      if (!/\bbaseUrl\b/.test(source)) continue;
-      let fetches = false;
+      if (!/\bbaseUrl\b/.test(read(file))) continue;
       visitFile(file, (node) => {
-        if (isFetchCall(node)) fetches = true;
+        if (isFetchCall(node) && !isOwnRoute(node)) offenders.push(rel(file));
       });
-      if (fetches) offenders.push(rel(file));
     }
     expect(
       offenders,
-      `these files hold the base URL and can send to it: ${offenders.join(", ")}`,
+      `these files hold the base URL and can send somewhere unaccounted for: ${offenders.join(", ")}`,
     ).toEqual([]);
   });
 
