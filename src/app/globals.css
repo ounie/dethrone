@@ -1904,12 +1904,25 @@ code {
 @media (max-width: 1500px) {
   .console {
     grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+    /*
+     * Nothing may cross column one, because the rail is sticky.
+     *
+     * A sticky element stays pinned to the viewport after the page scrolls past
+     * its grid area, so any area spanning BOTH columns ends up underneath it —
+     * the rail paints over the log and the seat, and the seat is a money
+     * readout. `"log log"` and `"seat seat"` did exactly that.
+     *
+     * Keeping every other pane in column two costs those two panes some width
+     * at this breakpoint and buys back the thing the sticky rail is for: the
+     * catalogue stays visible the whole way down without ever obscuring what it
+     * is meant to be read alongside.
+     */
     grid-template-areas:
       "rail chat"
       "rail command"
       "rail response"
-      "log  log"
-      "seat seat";
+      "rail log"
+      "rail seat";
   }
   .masthead {
     grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);

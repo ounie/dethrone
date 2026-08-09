@@ -120,8 +120,40 @@ async function run(input: ProviderRunInput, execute: ToolExecutor): Promise<Chat
       mcpServers: {
         [MCP_SERVER]: createSdkMcpServer({ name: MCP_SERVER, version: "1.0.0", tools }),
       },
-      // The console's tools, and nothing else. No filesystem, no shell, no web.
-      allowedTools: allowed,
+      /**
+       * The subscription, and only the subscription.
+       *
+       * The subprocess inherits this process's environment and resolves
+       * credentials in Claude Code's own order — `ANTHROPIC_API_KEY` first, the
+       * logged-in OAuth session much later. So on a console that also has
+       * `ANTHROPIC_API_KEY` set (which is exactly what enables the *Anthropic
+       * API* provider three entries down the picker) this provider would
+       * silently bill the API while the UI said "Max / Pro subscription".
+       *
+       * Stripping the two key variables makes the label true by construction:
+       * pick this provider and your subscription pays, or it does not run at
+       * all. The alternative — reporting whichever credential happened to win —
+       * would make the picker's two Claude entries the same thing wearing
+       * different names, which is the sort of ambiguity a money screen cannot
+       * afford.
+       */
+      env: withoutApiKeys(process.env),
+
+      /**
+       * The console's tools, and nothing else. No filesystem, no shell, no web.
+       *
+       * `allowedTools` is deliberately EMPTY, and the names live in the callback
+       * instead. The SDK warns — `CLAUDE_SDK_CAN_USE_TOOL_SHADOWED` — that a
+       * bare name in `allowedTools` auto-approves the tool *before*
+       * `canUseTool` is consulted, so listing them there would have made the
+       * callback dead code for every tool it was written to allow. The
+       * allowlist still worked, but by a mechanism other than the one the code
+       * claimed, and a guard nobody can see running is a guard nobody will
+       * notice breaking.
+       *
+       * One gate, and it is the callback.
+       */
+      allowedTools: [],
       disallowedTools: [
         "Bash",
         "Read",
@@ -179,6 +211,23 @@ async function run(input: ProviderRunInput, execute: ToolExecutor): Promise<Chat
   }
 
   return events;
+}
+
+/**
+ * The environment the subprocess gets: this one, minus anything that would
+ * make it authenticate as an API key rather than as the operator's session.
+ *
+ * `ANTHROPIC_AUTH_TOKEN` is stripped alongside `ANTHROPIC_API_KEY` because it
+ * sits *above* the OAuth profile in the same resolution order and would win in
+ * exactly the same silent way.
+ */
+function withoutApiKeys(env: NodeJS.ProcessEnv): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (k === "ANTHROPIC_API_KEY" || k === "ANTHROPIC_AUTH_TOKEN") continue;
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
 }
 
 /** The SDK wants an AbortController; the rest of this feature passes signals. */
