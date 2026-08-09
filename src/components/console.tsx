@@ -8,10 +8,11 @@ import FightersPane from "./fighters-pane";
 import Masthead, { type Ceiling, type House, type Wallet } from "./masthead";
 import Rail from "./rail";
 import ResponseLog, { type LogRow } from "./response-log";
-import ResponsePane, { type Envelope } from "./response-pane";
+import ResponsePane from "./response-pane";
 import SeatState, { type SeatSnapshot } from "./seat-state";
 import type { AgentConfig, ChatEventWire } from "@/lib/agent";
 import type { Capabilities, StakeRange } from "@/lib/capability";
+import type { Envelope } from "@/lib/envelope";
 import { byId, COMMANDS, type Command } from "@/lib/commands";
 import { logTime } from "@/lib/format";
 

@@ -1851,6 +1851,24 @@ code {
   border-bottom-color: var(--ember-500);
 }
 
+/*
+ * The HTML view.
+ *
+ * Same slab, same inset, same height as the code block it swaps places with, so
+ * changing tabs does not resize the pane and shove the seat readout down the
+ * page. Everything inside the frame is styled by the document itself — it has
+ * to be, or the file would stop rendering the moment it left this app.
+ */
+.html-view {
+  display: block;
+  width: 100%;
+  height: 46vh;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color-scheme: dark;
+}
+
 /* ── Code block ───────────────────────────────────────────────────────────── */
 
 .code {
