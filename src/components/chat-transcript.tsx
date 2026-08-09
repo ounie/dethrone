@@ -30,20 +30,26 @@ export default function ChatTranscript({
   turns,
   capabilities,
   loadedProposals,
+  busy,
   onLoadCommand,
+  onRunCommand,
 }: {
   turns: readonly Turn[];
   capabilities: Capabilities;
   loadedProposals: ReadonlySet<string>;
+  /** True while any request is in flight. Approving twice is not a thing. */
+  busy: boolean;
   onLoadCommand: (commandId: string, args: Record<string, string>) => void;
+  onRunCommand: (commandId: string, args: Record<string, string>) => void;
 }) {
   if (turns.length === 0) {
     return (
       <div className="chat-empty">
         <p>Ask about the seat, the queue, a fighter&rsquo;s legal actions.</p>
         <p className="muted">
-          Reads run straight away. Anything that signs or spends comes back as a proposal you run
-          yourself.
+          Reads run straight away. Anything that signs or spends comes back as a proposal —
+          approve it here, or edit it in the command pane first. A paid one still asks you to
+          confirm the amount.
         </p>
       </div>
     );
@@ -84,6 +90,8 @@ export default function ChatTranscript({
               proposal={turn.proposal}
               capability={capabilities[turn.proposal.commandId]}
               loaded={loadedProposals.has(turn.proposal.commandId)}
+              busy={busy}
+              onApprove={() => onRunCommand(turn.proposal!.commandId, turn.proposal!.args)}
               onLoad={() => onLoadCommand(turn.proposal.commandId, turn.proposal.args)}
             />
           );

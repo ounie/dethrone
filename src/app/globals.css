@@ -73,6 +73,30 @@
   --teal-500: #3c8d84;
   --teal-600: #2f6f68;
 
+  /*
+   * Action types — a TAXONOMY, and the one place five hues are spent at once.
+   *
+   * The hue families are the arena's own (`/simulator` colours strike red,
+   * guard blue, bind gold, feint violet, range green), because an operator who
+   * learns the code on one surface must not have to relearn it on the other.
+   * The exact values are the console's, and two of them are deliberately NOT
+   * the obvious token:
+   *
+   *   strike is salmon, never `--ember-*`. Ember means "this settles an amount"
+   *     and, at hairline weight, "caution frame" — nothing else. A strike badge
+   *     in ember would put the money colour on sixteen menu rows.
+   *   bind is a duller, lighter gold than `--gold-400`, which is the frame and
+   *     crest material. Same family, different job, visibly different value.
+   *
+   * These are safe as colour BECAUSE they are never the only signal: every tag
+   * prints its own name, which is the rule the top of this file states.
+   */
+  --type-strike: #e0796d;
+  --type-guard: #6ea9c4;
+  --type-bind: #d8b45f;
+  --type-feint: #a892d8;
+  --type-range: #6bbf8f;
+
   /* Roles */
   --bg-page: var(--ink-950);
   --bg-panel: linear-gradient(180deg, #14100e 0%, #0d0a09 100%);
@@ -281,6 +305,26 @@ code {
   gap: var(--s2);
 }
 
+/*
+ * Layout-transparent. `.panel` is a flex column and several panes rely on being
+ * a shrinkable child of it — `.rail` scrolls inside `max-height` only because it
+ * can shrink below its content — so the collapse wrapper passes `flex` and
+ * `min-height: 0` straight through instead of becoming a new block box.
+ */
+.panel-body-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* A folded panel is its header, and the header keeps the panel's rounded
+   bottom — the hairline under it would otherwise float with nothing beneath. */
+.panel[data-collapsed="true"] .panel-head {
+  border-bottom: none;
+}
+
 .pane-body {
   padding: var(--s4);
   min-width: 0;
@@ -342,12 +386,30 @@ code {
 
 /* ── Masthead ─────────────────────────────────────────────────────────────── */
 
+/*
+ * Three columns and three children: brand, wallet, meter.
+ *
+ * The template always said three. What it did not have was a third child — the
+ * wallet card was nested inside `.masthead-brand`, so a keyed deploy rendered
+ * two cards into a three-track grid and left the whole right-hand column empty
+ * at desktop width. (The `.notice` fills it on a read-only deploy, which is why
+ * nobody noticed: the only configuration where the row looked right was the one
+ * with no key.)
+ *
+ * The meter gets the widest track. It carries the House, the headline, the bar
+ * and the setup hint, and it is the one that reads badly when squeezed.
+ */
 .masthead {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr) minmax(260px, 0.85fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(300px, 1fr) minmax(320px, 1.15fr);
   gap: var(--s4);
   align-items: stretch;
   margin-bottom: var(--s4);
+}
+
+/* Its own column now, so the top margin that stacked it under the chips goes. */
+.masthead > .wallet {
+  margin-top: 0;
 }
 
 .masthead-brand {
@@ -493,6 +555,61 @@ code {
   border: 1px solid var(--border-panel);
   border-radius: var(--radius-md);
   box-shadow: var(--bevel-stone), var(--shadow-tile);
+}
+
+/*
+ * The operator's House, at the head of the wallet card.
+ *
+ * It sat above the ceiling until it was pointed out that a House is not a fact
+ * about money — it is a fact about the ADDRESS, derived from it by the same one
+ * argument the genome takes. So it lives in the same gilt frame as the hex it
+ * comes from, with a hairline between them, and the ceiling card is left to
+ * talk about money alone.
+ *
+ * Gilt suits it twice over: a House is ceremony, and the wallet card was
+ * already gilt-edged.
+ *
+ * The negative margins pull it out to the card's own edges so the hairline
+ * spans the full width — a rule inset by the card's padding reads as an
+ * underline on the text rather than a division of the card.
+ */
+.house-mark {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: -9px -12px var(--s2);
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.house-crest {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  /* The asset ships at 128 and is background-free; nothing here re-encodes it,
+     so the alpha survives. See the note on `HouseMark`. */
+  object-fit: contain;
+}
+
+.house-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.house-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.house-name {
+  font-family: var(--font-cinzel), "Trajan Pro", Georgia, serif;
+  font-size: 14px;
+  color: var(--gold-300);
 }
 
 .meter-head {
@@ -652,10 +769,29 @@ code {
  * and it is what the chat's tool calls and the Run button both write into.
  */
 
+/*
+ * `fighters` sits ABOVE the cause column and spans both content columns, and
+ * both halves of that are arguments rather than taste.
+ *
+ * ABOVE, because the panel arms the command pane — it selects a command and
+ * fills its fields, exactly as an accepted chat proposal does. The paragraph
+ * above already settled where that belongs: *"loading a proposal moves the eye
+ * one pane downward, which is the direction the page already flows."* A roster
+ * you pick from underneath the pane it fills would reverse that for the one
+ * action it exists to start.
+ *
+ * SPANNING TWO COLUMNS, because its two grids — the roster and the sixteen
+ * actions — are the widest things in the app, and `.menu-grid` lays out at
+ * `minmax(230px, 1fr)`. In a single 1fr column it renders one action per row.
+ * The span stops at column two: it must never reach column one, because the
+ * rail is sticky and paints over anything that does once the page scrolls past
+ * it. That bug put the catalogue on top of the seat readout.
+ */
 .console {
   display: grid;
   grid-template-columns: minmax(0, 330px) minmax(0, 1fr) minmax(0, 1.05fr);
   grid-template-areas:
+    "rail fighters fighters"
     "rail chat     response"
     "rail command  response"
     "rail log      seat";
@@ -684,6 +820,9 @@ code {
 .pane-seat {
   grid-area: seat;
 }
+.pane-fighters {
+  grid-area: fighters;
+}
 
 /* ── Rail ─────────────────────────────────────────────────────────────────── */
 
@@ -697,18 +836,63 @@ code {
   margin-top: var(--s3);
 }
 
+/*
+ * The heading is the fold control, so the padding moves onto the button inside
+ * it — a heading with its own padding would leave a dead strip beside the
+ * clickable area, which reads as a broken target rather than a margin.
+ */
 .rail-group-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s2);
   margin: 0 0 var(--s1);
-  padding: 6px 9px;
   border-radius: var(--radius-xs);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+
+.proposal-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+/* Teal, deliberately. On a paid command this earns a 428 and the confirmation
+   dialog; the ember button lives in that modal, and there is still only one. */
+.proposal-approve {
+  color: var(--teal-400);
+  border-color: var(--border-teal);
+}
+
+.proposal-approve:hover:not(:disabled) {
+  background: rgba(60, 141, 132, 0.12);
+}
+
+.rail-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rail-group-toggle:hover {
+  color: var(--text-display);
+}
+
+/* Pushes the count to the right edge, where it was before the button existed. */
+.rail-group-label {
+  flex: 1;
+  min-width: 0;
 }
 
 .rail-group-head[data-tier="free"],
@@ -1124,6 +1308,31 @@ code {
   font-size: 11.5px;
 }
 
+/* Reordering. `cursor: grab` on the row rather than on a handle: the whole slot
+   is draggable, and a handle would imply the rest of it is not. */
+.slot[draggable="true"] {
+  cursor: grab;
+}
+
+.slot[data-dragging="true"] {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+/* The drop target, marked on its leading edge — a full outline reads as
+   "selected" and this is a position, not a selection. */
+.slot[data-over="true"] {
+  border-color: var(--border-teal);
+  box-shadow: inset 3px 0 0 var(--teal-500);
+}
+
+.slot-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
 .slot-n {
   flex-shrink: 0;
   width: 18px;
@@ -1154,6 +1363,19 @@ code {
   color: var(--text-body);
 }
 
+/*
+ * One tag, five hues, driven off `data-type`.
+ *
+ * The base is teal and it is a FALLBACK, not the default: an action type this
+ * stylesheet has never heard of still renders as a legible tag rather than
+ * disappearing. `actions-v1` freezes five, but the console does not get to
+ * assume the arena will never publish a sixth — it would arrive in a
+ * `legal_actions` response with no warning and no deploy here.
+ *
+ * `color-mix` rather than five hand-written rgba pairs: the tint and the border
+ * are derived from the one hue token, so adding a type is one variable and one
+ * selector instead of three values to keep in sync.
+ */
 .type-tag {
   padding: 0 5px;
   border: 1px solid var(--border-teal);
@@ -1165,14 +1387,74 @@ code {
   letter-spacing: 0.04em;
 }
 
+.type-tag[data-type="strike"] {
+  color: var(--type-strike);
+  border-color: color-mix(in srgb, var(--type-strike) 42%, transparent);
+  background: color-mix(in srgb, var(--type-strike) 9%, transparent);
+}
+.type-tag[data-type="guard"] {
+  color: var(--type-guard);
+  border-color: color-mix(in srgb, var(--type-guard) 42%, transparent);
+  background: color-mix(in srgb, var(--type-guard) 9%, transparent);
+}
+.type-tag[data-type="bind"] {
+  color: var(--type-bind);
+  border-color: color-mix(in srgb, var(--type-bind) 42%, transparent);
+  background: color-mix(in srgb, var(--type-bind) 9%, transparent);
+}
+.type-tag[data-type="feint"] {
+  color: var(--type-feint);
+  border-color: color-mix(in srgb, var(--type-feint) 42%, transparent);
+  background: color-mix(in srgb, var(--type-feint) 9%, transparent);
+}
+.type-tag[data-type="range"] {
+  color: var(--type-range);
+  border-color: color-mix(in srgb, var(--type-range) 42%, transparent);
+  background: color-mix(in srgb, var(--type-range) 9%, transparent);
+}
+
+/*
+ * Four across, and fixed rather than `auto-fill`.
+ *
+ * `auto-fill` at `minmax(230px, 1fr)` gave a column count that changed with the
+ * container, which on a sixteen-entry menu meant the grid reflowed every time a
+ * neighbouring pane resized — and the whole point of this list is that it is a
+ * stable, scannable map of one fighter's options. Four columns is four rows of
+ * four, which is exactly the sixteen a menu holds.
+ *
+ * `minmax(0, 1fr)` rather than `1fr`: a grid track's default minimum is its
+ * content, so a long action string would push the column wider than its share
+ * and break the four-across promise instead of ellipsing. `.ellipsis` on the
+ * text needs a track that is allowed to be narrower than its contents.
+ */
 .menu-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 3px;
   max-height: 240px;
   overflow-y: auto;
   padding-top: var(--s2);
   border-top: 1px solid var(--border-hairline);
+}
+
+/* Below the three-column console layout there is not room for four readable
+   columns; the count steps down rather than the text becoming unreadable. */
+@media (max-width: 1500px) {
+  .menu-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .menu-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .menu-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .menu-item {
@@ -1211,6 +1493,261 @@ code {
 .menu-text {
   flex: 1;
   min-width: 0;
+}
+
+/* ── Fighters ─────────────────────────────────────────────────────────────────
+ *
+ * The one place this app renders a photograph, and it borrows nothing from the
+ * two crests: those are `alt=""` ceremony at 16% opacity, and these are
+ * evidence. A portrait here is how an operator knows which fighter #41 is
+ * before spending on it, so it renders at full strength and carries a real
+ * `alt`.
+ *
+ * Teal on the selected row, never ember. Ember fill plus rim glow belongs to
+ * the Run button alone, and a roster is a lane where nothing is at stake — you
+ * are choosing what to type, not settling an amount.
+ */
+
+.fighters {
+  display: grid;
+  gap: var(--s3);
+}
+
+.roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 3px;
+}
+
+.roster-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+
+.roster-item:hover:not(:disabled) {
+  background: var(--ink-800);
+  color: var(--text-display);
+}
+
+.roster-item[data-selected="true"] {
+  border-color: var(--border-teal);
+  background: rgba(60, 141, 132, 0.08);
+  color: var(--text-display);
+}
+
+.roster-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.roster-face {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-hairline);
+  /* Cropped to the top: these are full-body portraits, and centring them frames
+     a torso. The arena's own fighter lists make the same choice. */
+  object-fit: cover;
+  object-position: top;
+  background: var(--bg-inset);
+}
+
+.roster-face.empty {
+  display: block;
+}
+
+.roster-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.roster-name {
+  font-size: 12px;
+  color: var(--text-display);
+}
+
+.roster-meta {
+  font-size: 10px;
+}
+
+.fighter-detail {
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  padding: var(--s3);
+}
+
+.fighter-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.fighter-portrait {
+  flex-shrink: 0;
+  width: 72px;
+  height: 96px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-gilt);
+  object-fit: cover;
+  object-position: top;
+  background: var(--bg-panel-flat);
+}
+
+.fighter-name {
+  font-family: var(--font-cinzel), serif;
+  font-size: 15px;
+  color: var(--text-display);
+}
+
+.fighter-sub {
+  font-size: 10.5px;
+}
+
+.plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+.plan-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.combos {
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.combo-name {
+  width: 22ch;
+}
+
+.combo-list {
+  list-style: none;
+  margin: 0 0 var(--s2);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-panel-flat);
+  padding-right: 2px;
+}
+
+/* Teal: a saved macro is the lane where nothing is at stake. Applying one fills
+   a form and cannot settle an amount. */
+.combo-use {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 22ch;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--teal-400);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.combo-use:hover:not(:disabled) {
+  color: var(--text-display);
+}
+
+.combo-use:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.combo-count {
+  font-size: 10px;
+}
+
+.field-hint[data-tone="warn"] {
+  color: var(--awaiting);
+}
+
+.legend {
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.legend-body {
+  margin-top: var(--s2);
+  display: grid;
+  gap: var(--s2);
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.legend-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  min-width: 8ch;
+}
+
+.arm-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.arm-label {
+  font-size: 11px;
+}
+
+.watch-box {
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  padding: var(--s3);
 }
 
 /* ── Response pane ────────────────────────────────────────────────────────── */
@@ -1918,6 +2455,7 @@ code {
      * is meant to be read alongside.
      */
     grid-template-areas:
+      "rail fighters"
       "rail chat"
       "rail command"
       "rail response"
@@ -1926,6 +2464,16 @@ code {
   }
   .masthead {
     grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
+  }
+  /*
+   * Two tracks, three children — so one of them wraps, and a wrapped child that
+   * occupies a single track recreates the empty half this breakpoint was
+   * supposed to avoid. The meter is the one sent to the second row, because it
+   * is the widest content and the only one that gains from the full span;
+   * brand and wallet pair naturally on the first.
+   */
+  .masthead > .masthead-meter {
+    grid-column: 1 / -1;
   }
   .masthead > .notice {
     grid-column: 1 / -1;
@@ -1948,6 +2496,7 @@ code {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "rail"
+      "fighters"
       "chat"
       "command"
       "response"

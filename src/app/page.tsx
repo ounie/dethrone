@@ -30,6 +30,30 @@ function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+/**
+ * The wallet's House, as the arena reports it.
+ *
+ * Returns null on anything unexpected — an unreachable arena, Houses switched
+ * off, a body that does not carry the field. Never a guess: an operator shown
+ * the wrong House would have no way to tell, because the correct answer is a
+ * hash of their own address.
+ */
+async function houseOf(wallet: string): Promise<{ slug: string; name: string } | null> {
+  const read = await arena.call({
+    method: "GET",
+    // Encoded here for the same reason `/api/act` encodes its segments: this is
+    // an address from configuration, not from a form, and the habit is cheaper
+    // than the exception.
+    path: `/api/derive/${encodeURIComponent(wallet)}`,
+    paid: false,
+  });
+  if (!read.result?.ok) return null;
+  const body = (read.result.body ?? {}) as { house?: { slug?: unknown; name?: unknown } };
+  const slug = str(body.house?.slug);
+  const name = str(body.house?.name);
+  return slug && name ? { slug, name } : null;
+}
+
 /** Whatever the seat read returned, labelled. Nothing derived, nothing ticked. */
 function snapshot(body: unknown, reachable: boolean, fetchedAtIso: string): SeatSnapshot {
   const seat = (body ?? {}) as Record<string, unknown>;
@@ -54,6 +78,26 @@ export default async function Page() {
 
   const me = address();
   const keyed = hasWallet();
+
+  /*
+    The operator's House.
+
+    A House is a pure function of the wallet address — `houseAssign(address)`,
+    the same one argument the genome takes — so this console could compute it in
+    four lines and must not. It is a game rule, the eight-entry table is the
+    arena's, and a second copy here would be silently wrong the day the mapping
+    versions, on a label the operator has no way to check.
+
+    So it is READ, from the free `/api/derive/{address}` — which exists to answer
+    exactly this ("your wallet already contains a fighter") and publishes
+    `house` only when the arena has Houses switched on. A deploy with the flag
+    down gets no field, renders no crest, and infers nothing from the absence.
+
+    Free, unauthenticated, and cacheable forever by the arena's own headers, so
+    this costs the page nothing beyond one request it can afford to lose: a
+    failure leaves `house` null and the masthead simply has no crest in it.
+  */
+  const house = me ? await houseOf(me) : null;
 
   // One implementation, shared with the agent's tool surface. See lib/registry.
   const caps = await capabilities(live);
@@ -102,6 +146,7 @@ export default async function Page() {
         agent={agent}
         forgeNote={live.forgeNote}
         stakeRange={live.duel}
+        sequenceLength={live.actions.sequenceLength}
         ceiling={{
           enabled: cfg.ceilingEnabled,
           spentCents: ledger?.spentCents ?? 0,
@@ -118,6 +163,7 @@ export default async function Page() {
               }
             : null
         }
+        house={house}
         seat={snapshot(seatRead.result?.body, reachable, new Date().toISOString())}
       />
 

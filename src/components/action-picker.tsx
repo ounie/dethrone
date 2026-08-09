@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import Icon from "./icon";
+import SequenceBuilder, { type MenuAction } from "./sequence-builder";
 import { stamp } from "@/lib/format";
 
 /**
@@ -32,13 +33,6 @@ import { stamp } from "@/lib/format";
  * it again.
  */
 
-interface MenuAction {
-  index: number;
-  id: string;
-  text: string;
-  type: string;
-}
-
 interface Selection {
   closesAt: string;
   submitted: { challenger: boolean; throne: boolean };
@@ -56,12 +50,18 @@ async function act(id: string, args: Record<string, string>): Promise<Record<str
 export default function ActionPicker({
   matchId,
   value,
+  capacity,
   disabled,
   onChange,
 }: {
   matchId: string;
   /** JSON array of indices, as it will be submitted. */
   value: string;
+  /**
+   * The canon's published sequence length, or null when it publishes none.
+   * Forwarded, never interpreted — see `SequenceBuilder`.
+   */
+  capacity: number | null;
   disabled: boolean;
   onChange: (json: string) => void;
 }) {
@@ -171,58 +171,22 @@ export default function ActionPicker({
         {menuError && <span className="num window-state" data-tone="bad">{menuError}</span>}
       </div>
 
-      {/* ── The five slots ───────────────────────────────────────────────── */}
-      <ol className="slots" aria-label="Your sequence, in exchange order">
-        {picks.map((index, slot) => {
-          const action = menu?.find((a) => a.index === index);
-          return (
-            <li key={slot} className="slot">
-              <span className="slot-n num">{slot + 1}</span>
-              <span className="slot-body">
-                <span className="num slot-index">#{index}</span>
-                {action && <span className="slot-text">{action.text}</span>}
-                {action && <span className="type-tag">{action.type}</span>}
-              </span>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label={`Remove position ${slot + 1}`}
-                disabled={disabled}
-                onClick={() => setPicks(picks.filter((_, i) => i !== slot))}
-              >
-                <Icon name="x-mark" size={12} />
-              </button>
-            </li>
-          );
-        })}
-        {picks.length === 0 && (
-          <li className="slot empty muted">
-            Nothing chosen. Pick from the menu below, in the order they should be attempted.
-          </li>
-        )}
-      </ol>
-
-      {/* ── The menu grid ────────────────────────────────────────────────── */}
-      {menu && (
-        <div className="menu-grid">
-          {menu.map((action) => (
-            <button
-              key={action.index}
-              type="button"
-              className="menu-item"
-              disabled={disabled}
-              title={action.text}
-              onClick={() => setPicks([...picks, action.index])}
-            >
-              <span className="num menu-index">#{action.index}</span>
-              <span className="menu-text ellipsis">{action.text}</span>
-              <span className="type-tag" data-type={action.type}>
-                {action.type}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* ── The slots and the menu ───────────────────────────────────────── */}
+      <SequenceBuilder
+        menu={menu}
+        picks={picks}
+        capacity={capacity}
+        disabled={disabled}
+        onPick={(index) => setPicks([...picks, index])}
+        onClear={(slot) => setPicks(picks.filter((_, i) => i !== slot))}
+        onReorder={(from, to) => {
+          const next = [...picks];
+          const [moved] = next.splice(from, 1);
+          next.splice(to, 0, moved);
+          setPicks(next);
+        }}
+        emptyHint="Nothing chosen. Pick from the menu below, in the order they should be attempted."
+      />
 
       <p className="field-hint">
         {/* The arena decides how many are required and what the bounds are. This
