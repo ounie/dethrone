@@ -170,10 +170,18 @@ export default async function Page() {
       <footer className="footnote">
         {keyed ? (
           <>
+            {/*
+              This used to end "Reconciliation is the arena's: GET /api/treasury
+              is the ledger." That route is ADMIN_TOKEN and always has been —
+              `commands.ts` excludes it for exactly that reason, so this file
+              and the catalogue disagreed with each other in print. Naming an
+              endpoint the reader cannot call, as their receipt, is worse than
+              naming none: it reads as an audit trail right up until the 401.
+            */}
             The ceiling is a seatbelt in this app&rsquo;s own process — it bounds one sitting and
             protects against a stray click. It is not escrow, and it does not protect a host you do
-            not control. Reconciliation is the arena&rsquo;s: <code>GET /api/treasury</code> is the
-            ledger.
+            not control. It is not a record either: what this wallet actually spent is on-chain, and
+            every match the arena settles is public on its own pages.
           </>
         ) : (
           <>

@@ -8,9 +8,13 @@ import { money } from "@/lib/format";
  *
  * **This is a session counter, not a ledger**, and the footer says so in the
  * product's own words. It lives in one browser tab, it dies with the process,
- * and it is not reconciliation — `GET /api/treasury` is the record. Rendering
- * it as a table with a running total would make it look like books, and PRD §14
- * bars this console from keeping any.
+ * and it is not reconciliation. Rendering it as a table with a running total
+ * would make it look like books, and PRD §14 bars this console from keeping
+ * any.
+ *
+ * It used to name `GET /api/treasury` as the record it is not. That route is
+ * ADMIN_TOKEN — `commands.ts` excludes it on those grounds — so the honest
+ * pointer is the chain and the arena's own public pages.
  *
  * Numbers are tabular so the columns do not jitter as rows arrive: a latency
  * column that reflows every request is a column nobody can read at a glance.
@@ -82,8 +86,8 @@ export default function ResponseLog({ rows }: { rows: LogRow[] }) {
             </table>
           </div>
           <p className="table-foot">
-            {rows.length} this sitting. A session counter, not a ledger —{" "}
-            <code>GET /api/treasury</code> is the record.
+            {rows.length} this sitting. A session counter, not a ledger — it dies with the tab,
+            and the chain is the record.
           </p>
         </>
       )}
