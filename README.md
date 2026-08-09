@@ -36,7 +36,7 @@ Grouped by cost, because cost is the only access control in this system — ther
 
 | Tier | What it is | Wallet |
 |---|---|---|
-| **Free** | 27 reads of the canon, including a fighter's legal action menu. The seat, the queue, arenas, matches, characters, the duel pool, the heir market, houses, lordships, the form guide. | None |
+| **Free** | 30 reads of the canon, including a fighter's legal action menu. The seat, the queue, arenas, matches, characters, the duel pool, the heir market, houses, lordships, the Court, the form guide. | None |
 | **Signed** | Your own records, proven with an EIP-191 signature over a single-use nonce. Your stable, your side of a live match, your duel. Plus release, cancel, list — and **submitting your five actions** inside a selection window. | Yes — signs, spends nothing |
 | **Paid** | Forge, challenge, order a film, book an exhibition, post or take a duel, claim/buy an heir, buy a lordship. | Yes — settles USDC over x402 |
 
@@ -118,7 +118,7 @@ Not a deployment option. A URL anyone can reach that can spend a wallet is a hos
 - **Confirmation is a protocol step, not a dialog.** Anything above `CONSOLE_CONFIRM_OVER_CENTS`, and every caller-priced command at any amount, returns `428` naming the amount and the paying address. The browser echoes those numbers back and the route refuses an echo it did not compute. A `window.confirm()` would be bypassable by anything that can POST, and untestable.
 - **The threshold tightens and never loosens.** A caller may ask `/api/act` to demand a confirmation it would otherwise skip — the agent does, since the 428 is the only place a price is revealed before it settles, and its per-action cap is far below a human's threshold. The route takes the minimum, so a request can make it *ask* a question and can never make it stop asking one. This exists because the cap had a hole without it: a paid command cheaper than `CONSOLE_CONFIRM_OVER_CENTS` used to execute with the agent never seeing an amount, which made the cap not a cap for exactly the commands most likely to run. Every test passed while that was true; running it found it in a minute.
 - **Retries never re-sign.** The signed x402 payload is captured on its way out. If the transport dies before any status arrives, that *exact* payload is resent once — the EIP-3009 nonce is single-use, so it either completes the original request or fails as a replay. It cannot double-charge, and there is no code path that can mint a second signature for one command.
-- **The ceiling is not escrow.** It lives in this app's own process and protects against a stray click, not against a compromised host. Reconciliation is the arena's: `GET /api/treasury` is the ledger.
+- **The ceiling is not escrow.** It lives in this app's own process and protects against a stray click, not against a compromised host. It is not a record either — what your wallet actually spent is on-chain, and every match the arena settles is public on its own pages. (This bullet used to point at `GET /api/treasury` as the ledger. That route is `ADMIN_TOKEN`, which `src/lib/commands.ts` has always said; naming an endpoint you cannot call as your receipt is worse than naming none.)
 
 Signed requests are the mirror image and the difference matters: every `(scope, wallet, timestamp)` is accepted once, so a signed retry **must** re-sign with a fresh timestamp or it dies as a replay. Both rules are true and they look contradictory; conflating them turns a retry loop into either a second payment or a permanent 401.
 
@@ -200,7 +200,7 @@ your disk ──► process env ──► server-only: wallet.ts · sign.ts · p
 ## Verifying it yourself
 
 ```bash
-pnpm test          # 533 assertions, no network — no arena, no language model
+pnpm test          # 560+ assertions, no network — no arena, no language model
 pnpm test:live     # asks the real arena whether the catalogue is still honest
 pnpm typecheck
 pnpm build && pnpm scan:bundle
@@ -223,6 +223,7 @@ What the suite actually enforces:
 | `chat-execute` | In reads mode **nothing** that signs or spends reaches the arena — asserted for every non-free command, by the network stub never being called. |
 | `chat-route` | A request body cannot grant itself authority; the amount always comes from `/api/act`; a forwarded Host is not a forged one. |
 | `autonomy` | Every way the grant fails closed: an unminted nonce, a replayed one, terms that changed underneath the operator. |
+| `doc-claims` | The prose answers to the catalogue: the free-read count above is the real one, and no page offers a route this console is excluded from as your ledger. |
 
 `test/canon-routes.json` is a snapshot of the arena's route tree at a named commit, regenerated with `pnpm canon:sync <path-to-apps/web>`. It is not a source of truth and cannot be, which is why `pnpm test:live` exists: it asks the running server, and it is the only check that catches a route deleted after the snapshot was taken.
 
@@ -230,7 +231,7 @@ What the suite actually enforces:
 
 ## What this is not
 
-No multi-operator anything. No browser-held key, wallet-connect widget, or embedded wallet — the key is server-side in a process you own, and a browser wallet is a different product with a different threat model. No bookkeeping: `GET /api/treasury` and the arena's own pages are the record. No token accounting either: there is no model pricing and no per-turn cost anywhere on this screen, because a second currency on a money screen is one currency too many.
+No multi-operator anything. No browser-held key, wallet-connect widget, or embedded wallet — the key is server-side in a process you own, and a browser wallet is a different product with a different threat model. No bookkeeping: the chain and the arena's own pages are the record. No token accounting either: there is no model pricing and no per-turn cost anywhere on this screen, because a second currency on a money screen is one currency too many.
 
 **No scheduling.** Nothing here runs unless a person opens a turn. There is no cron, no queue, no background loop, and closing the tab ends it.
 
