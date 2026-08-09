@@ -68,7 +68,7 @@ export interface Field {
 
 export type Tier = "free" | "signed" | "paid";
 
-export type Group = "Read" | "Stable" | "Fight" | "Market";
+export type Group = "Read" | "Stable" | "Fight" | "Market" | "Court";
 
 /** Kill switches the canon exposes. A flagged route 404s when its feature is off. */
 export type FeatureFlag =
@@ -78,7 +78,8 @@ export type FeatureFlag =
   | "houses"
   | "undercard"
   | "filmOrders"
-  | "genesis";
+  | "genesis"
+  | "court";
 
 export interface Command {
   id: string;
@@ -461,6 +462,106 @@ export const COMMANDS: readonly Command[] = [
     cents: 0,
     fields: [{ name: "prompt", label: "Prompt" }],
     note: "Structural only — length, encoding, control characters. Not a moderation pre-flight, and under interface-v2 nothing consumes the result: fighters derive from the wallet address. Kept because the route is live.",
+  },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // The Court — the board (arena PRD 20).
+  //
+  // Grouped on its own rather than folded into Read, because it is the only
+  // group that spans both tiers: the reads are free and unauthenticated, and the
+  // writes are SIGNED AND FREE. That combination exists nowhere else in the
+  // catalogue — everything signed until now was either the operator's own
+  // property or a spend — and burying free writes under "Read" would misdescribe
+  // the one thing an operator needs to know before clicking.
+  //
+  // The Court takes no money and pays none, so every `cents` here is 0 and there
+  // is no live price to read.
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "court",
+    label: "The Court",
+    tier: "free",
+    group: "Court",
+    method: "GET",
+    path: "/api/court",
+    price: "free",
+    cents: 0,
+    requiresFlag: "court",
+    fields: [
+      { name: "anchorKind", label: "Anchor", optional: true, hint: "match · seat · duel · house · floor" },
+      { name: "anchorId", label: "Anchor id", optional: true, hint: "a match id, a duel id, or a House SLUG" },
+      { name: "house", label: "House", optional: true, hint: "a House slug — its Hall only" },
+    ],
+    note: "The board. Free to read, forever, no wallet and no signature.",
+  },
+  {
+    id: "court_thread",
+    label: "One thread",
+    tier: "free",
+    group: "Court",
+    method: "GET",
+    // `:id`, not `:threadId` — the canon's segment is `[id]` and the drift test
+    // compares the resolved paths, not the labels.
+    path: "/api/court/thread/:id",
+    price: "free",
+    cents: 0,
+    requiresFlag: "court",
+    fields: [{ name: "id", label: "Thread", hint: "numeric thread id" }],
+    note: "Everything said in one thread. Refused posts are never shown.",
+  },
+  {
+    id: "court_standing",
+    label: "Court standing",
+    tier: "free",
+    group: "Court",
+    method: "GET",
+    path: "/api/court/standing/:wallet",
+    price: "free",
+    cents: 0,
+    requiresFlag: "court",
+    fields: [{ name: "wallet", label: "Wallet", hint: ADDRESS_HINT }],
+    note: "What a wallet may say, and the Halls it may say it in. The polite pre-flight.",
+  },
+  {
+    id: "court_proclaim",
+    label: "Open a thread",
+    tier: "signed",
+    group: "Court",
+    method: "POST",
+    path: "/api/court/proclaim",
+    price: "signed · free",
+    cents: 0,
+    signScope: "court:proclaim",
+    requiresFlag: "court",
+    fields: [
+      { name: "anchorKind", label: "Anchor", hint: "match · seat · duel · house · floor" },
+      { name: "anchorId", label: "Anchor id", optional: true, hint: "omit only for the open floor" },
+      { name: "floor", label: "Floor", optional: true, hint: "forged · fought — may be raised, never lowered" },
+      { name: "title", label: "Title" },
+      { name: "body", label: "Body" },
+    ],
+    note:
+      "Free, and refused if your standing is below the floor you set. Spoken is spoken: " +
+      "there is no edit and no delete.",
+  },
+  {
+    id: "court_heckle",
+    label: "Speak in a thread",
+    tier: "signed",
+    group: "Court",
+    method: "POST",
+    path: "/api/court/heckle",
+    price: "signed · free",
+    cents: 0,
+    // The scope embeds the thread, so a signature is bound to the room it was
+    // made for. `scopePlaceholders` requires a field of the same name.
+    signScope: "court:heckle:{threadId}",
+    requiresFlag: "court",
+    fields: [
+      { name: "threadId", label: "Thread", hint: "numeric thread id" },
+      { name: "body", label: "Body" },
+    ],
+    note: "Free. Refused if the thread is locked, or if your wallet is below its floor.",
   },
 
   // ───────────────────────────────────────────────────────────────────────────

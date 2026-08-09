@@ -1,8 +1,8 @@
 {
   "$comment": "GENERATED — do not edit by hand. Regenerate with `pnpm canon:sync <path-to-apps/web>`. This records the arena's route tree at the commit below; it is a checked-in snapshot, not a source of truth. test/live/canon.live.test.ts is what catches a route deleted after this was taken.",
   "source": "apps/web/src/app/api/**/route.ts",
-  "commit": "36b61f2937bd8925d239fb627bb454dab91aa76e",
-  "routeCount": 49,
+  "commit": "47c9f97ebd1b522ce813d01f654fc905a830be40",
+  "routeCount": 54,
   "routes": [
     {
       "path": "/api/agent/[id]",
@@ -89,6 +89,61 @@
         "GET"
       ],
       "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/court",
+      "methods": [
+        "GET"
+      ],
+      "flag": "COURT_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/court/heckle",
+      "methods": [
+        "POST"
+      ],
+      "flag": "COURT_ENABLED",
+      "signScope": "court:heckle:${body.threadId}",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/court/proclaim",
+      "methods": [
+        "POST"
+      ],
+      "flag": "COURT_ENABLED",
+      "signScope": "court:proclaim",
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/court/standing/[wallet]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "COURT_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/court/thread/[id]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "COURT_ENABLED",
       "signScope": null,
       "paid": false,
       "adminOnly": false,
