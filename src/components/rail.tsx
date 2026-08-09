@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useState } from "react";
 import Panel from "./panel";
 import Icon from "./icon";
 import type { Capabilities } from "@/lib/capability";
@@ -35,6 +36,90 @@ function priceLabel(cmd: Command, liveCents?: number): string {
   return liveCents === undefined ? cmd.price : money(liveCents);
 }
 
+/**
+ * One tier of the catalogue, foldable.
+ *
+ * Its own component because it holds state, and a `useState` inside the `.map`
+ * below would be a hook in a loop. Open by default — a catalogue that hid
+ * itself on load would make the console's central claim (here is everything
+ * this deploy can do, priced) something you have to go looking for.
+ *
+ * `catalogue-render.test.ts` counts `data-enabled="true"` across this rendered
+ * tree against the free-command count, so the default MUST stay open; folding
+ * one by default would unmount rows the test is counting and read as a
+ * capability regression. The toggle itself carries no `data-enabled` and is
+ * never disabled, which keeps it out of both of that file's assertions.
+ */
+function RailGroup({
+  tier,
+  label,
+  cmds,
+  capabilities,
+  activeId,
+  onSelect,
+}: {
+  tier: Command["tier"];
+  label: string;
+  cmds: Command[];
+  capabilities: Capabilities;
+  activeId: string;
+  onSelect: (cmd: Command) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const listId = useId();
+
+  return (
+    <section className="rail-group">
+      <h3 className="rail-group-head" data-tier={tier}>
+        <button
+          type="button"
+          className="rail-group-toggle"
+          aria-expanded={open}
+          aria-controls={listId}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          <Icon name={open ? "chevron-up" : "chevron-down"} size={12} />
+          <span className="rail-group-label">{label}</span>
+          <span className="count num">{cmds.length}</span>
+        </button>
+      </h3>
+
+      {open && (
+        <ul className="rail-list" id={listId}>
+          {cmds.map((cmd) => {
+            const cap = capabilities[cmd.id] ?? { enabled: true };
+            const active = cmd.id === activeId;
+            return (
+              <li key={cmd.id}>
+                <button
+                  type="button"
+                  className="cmd"
+                  aria-current={active}
+                  data-paid={cmd.tier === "paid"}
+                  data-enabled={cap.enabled}
+                  data-reason={cap.reason}
+                  disabled={!cap.enabled}
+                  onClick={() => onSelect(cmd)}
+                  title={cmd.label}
+                >
+                  <span className="method" data-method={cmd.method}>
+                    {cmd.method}
+                  </span>
+                  <span className="cmd-path ellipsis">{cmd.path}</span>
+                  <span className="tag num" data-tier={cmd.tier}>
+                    {priceLabel(cmd, cap.liveCents)}
+                  </span>
+                </button>
+                {!cap.enabled && cap.reason && <p className="rail-reason">{cap.reason}</p>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export default function Rail({
   capabilities,
   activeId,
@@ -51,45 +136,15 @@ export default function Rail({
           const cmds = COMMANDS.filter((c) => c.tier === tier);
           if (cmds.length === 0) return null;
           return (
-            <section className="rail-group" key={tier}>
-              <h3 className="rail-group-head" data-tier={tier}>
-                <span>{label}</span>
-                <span className="count num">{cmds.length}</span>
-              </h3>
-
-              <ul className="rail-list">
-                {cmds.map((cmd) => {
-                  const cap = capabilities[cmd.id] ?? { enabled: true };
-                  const active = cmd.id === activeId;
-                  return (
-                    <li key={cmd.id}>
-                      <button
-                        type="button"
-                        className="cmd"
-                        aria-current={active}
-                        data-paid={cmd.tier === "paid"}
-                        data-enabled={cap.enabled}
-                        data-reason={cap.reason}
-                        disabled={!cap.enabled}
-                        onClick={() => onSelect(cmd)}
-                        title={cmd.label}
-                      >
-                        <span className="method" data-method={cmd.method}>
-                          {cmd.method}
-                        </span>
-                        <span className="cmd-path ellipsis">{cmd.path}</span>
-                        <span className="tag num" data-tier={cmd.tier}>
-                          {priceLabel(cmd, cap.liveCents)}
-                        </span>
-                      </button>
-                      {!cap.enabled && cap.reason && (
-                        <p className="rail-reason">{cap.reason}</p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
+            <RailGroup
+              key={tier}
+              tier={tier}
+              label={label}
+              cmds={cmds}
+              capabilities={capabilities}
+              activeId={activeId}
+              onSelect={onSelect}
+            />
           );
         })}
 

@@ -84,9 +84,19 @@ export interface Wallet {
  * never crosses this boundary** — this component receives a string somebody
  * else computed and has no way to ask for anything more.
  */
-function WalletCard({ wallet }: { wallet: Wallet }) {
+function WalletCard({ wallet, house }: { wallet: Wallet; house: House | null }) {
   return (
     <div className="wallet">
+      {/*
+        Inside the wallet's frame rather than above the ceiling, because a House
+        is not a second fact about this console — it IS this address. `houseAssign`
+        takes the same one argument the genome does, so the crest and the hex
+        below it are two renderings of one thing, and a hairline between them
+        says that better than a separate card would.
+
+        It also keeps the ceiling card about money alone.
+      */}
+      {house && <HouseMark house={house} />}
       <div className="wallet-head">
         <span className="chip-label">Operator wallet</span>
         <span className="wallet-derived">derived from DETHRONE_PRIVATE_KEY</span>
@@ -196,12 +206,69 @@ function TightenControl({
   );
 }
 
+export interface House {
+  /** The ARENA slug — Houses share it, and the crest path is derived from it. */
+  slug: string;
+  name: string;
+}
+
+/**
+ * The operator's House, and its crest.
+ *
+ * ## Read, never computed
+ *
+ * A House falls out of the wallet address by a pure function over a frozen
+ * eight-entry table, and this console is not allowed to hold that table. The
+ * value arrives from `GET /api/derive/{address}` — see `page.tsx` — and is null
+ * whenever the arena did not publish one, which includes the whole case of
+ * Houses being switched off. Nothing is inferred from the absence and nothing
+ * is rendered in its place.
+ *
+ * ## The path is derived, and the file names were normalised for that
+ *
+ * `/houses/{slug}.webp`, exactly as the arena's own `HouseCrest` does it. A
+ * lookup table would be a second enumeration of the eight, free to drift from
+ * a list this console does not own. Note that `the-canopy` and `the-terminal`
+ * keep their article, because their slugs do.
+ *
+ * A plain `<img>`, not `next/image`, and the reason is specific: these assets
+ * are background-free with a real alpha channel, and Next's optimizer FLATTENS
+ * ALPHA when it re-encodes — the arena carries an `unoptimized` flag on its own
+ * crest component for precisely this. A bare tag on a local file skips the
+ * optimizer entirely, so there is no flag to forget.
+ *
+ * Gilt, because a House is ceremony. Nothing here is clickable and nothing
+ * costs anything.
+ */
+function HouseMark({ house }: { house: House }) {
+  return (
+    <div className="house-mark">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        className="house-crest"
+        src={`/houses/${house.slug}.webp`}
+        // Decorative: the House is named in the text beside it, and a screen
+        // reader announcing it twice is worse than not announcing it here.
+        alt=""
+        aria-hidden="true"
+        width={34}
+        height={34}
+      />
+      <span className="house-text">
+        <span className="house-label">Your House</span>
+        <span className="house-name">{house.name}</span>
+      </span>
+    </div>
+  );
+}
+
 export default function Masthead({
   baseUrl,
   operator,
   reachable,
   ceiling,
   wallet,
+  house,
   onTightened,
 }: {
   baseUrl: string;
@@ -209,6 +276,8 @@ export default function Masthead({
   reachable: boolean;
   ceiling: Ceiling;
   wallet: Wallet | null;
+  /** Null when there is no key, no reachable arena, or Houses are off. */
+  house: House | null;
   onTightened: (cap: number) => void;
 }) {
   const remaining = Math.max(0, ceiling.capCents - ceiling.spentCents);
@@ -241,8 +310,22 @@ export default function Masthead({
           )}
         </div>
 
-        {wallet && <WalletCard wallet={wallet} />}
       </div>
+
+      {/*
+        A grid child in its own right, not a card nested under the brand.
+
+        `.masthead` declares THREE columns and only ever rendered two children
+        with a key set — the wallet sat inside `.masthead-brand`, so column one
+        carried the lockup, the chips and the wallet while column three stayed
+        empty for the width of a desktop. The third track was written for this
+        card; the notice only borrows it on a read-only deploy, where there is
+        no wallet to show.
+
+        Reading order falls out of it: what this console points at, who it signs
+        as, what it may spend.
+      */}
+      {wallet && <WalletCard wallet={wallet} house={house} />}
 
       <div className="masthead-meter">
         {ceiling.enabled ? (
@@ -251,8 +334,29 @@ export default function Masthead({
               <span className="eyebrow">Ceiling (this sitting)</span>
               <span className="num meter-cap">{money(ceiling.capCents)}</span>
             </div>
+            {/*
+              The headline and the bar measure THE SAME QUANTITY, and they did
+              not used to.
+
+              The headline used to read the full cap as REMAINING, directly above
+              a bar that was empty because nothing had been SPENT: full by one
+              measure, empty by the other, and moving in opposite directions for
+              the rest of the sitting. Two readings of one budget on one strip of
+              screen is the money-display failure this console is otherwise
+              careful about.
+
+              Spent won, rather than remaining, for a reason about colour. The
+              fill is ember with a glow, and `globals.css`'s first paragraph
+              spends ember on one meaning — so a bar that started FULL would put
+              a wide glowing ember slab across the masthead of a console that
+              has not spent anything, which is exactly the wrong alarm. Growing
+              with the spend puts the visual weight where the risk is.
+
+              Remaining is still the number an operator plans against, so it
+              keeps its place in the foot, in words. Nothing is stated twice.
+            */}
             <p className="meter-headline">
-              <strong className="num">{money(remaining)}</strong> remaining of{" "}
+              <strong className="num">{money(ceiling.spentCents)}</strong> spent of{" "}
               <span className="num">{money(ceiling.capCents)}</span>
             </p>
             <div
@@ -267,7 +371,7 @@ export default function Masthead({
             </div>
             <div className="meter-foot">
               <span className="num">
-                {money(ceiling.spentCents)} spent ({used.toFixed(1)}%)
+                {money(remaining)} remaining ({used.toFixed(1)}% used)
               </span>
               <TightenControl capCents={ceiling.capCents} onTightened={onTightened} />
             </div>

@@ -37,6 +37,9 @@ export type IconName =
   | "rotate-cw"
   | "external-link"
   | "x-mark"
+  | "chevron-up"
+  | "chevron-down"
+  | "grip"
   | "wallet"
   | "message-square";
 
@@ -150,6 +153,22 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
+    </>
+  ),
+  "chevron-up": <path d="m18 15-6-6-6 6" />,
+  "chevron-down": <path d="m6 9 6 6 6-6" />,
+  // The drag affordance. Two columns of three dots is the convention every
+  // reorderable list uses, so it needs no label to be understood — and it is
+  // rendered `aria-hidden` beside real move buttons, which are the path for
+  // anyone who cannot drag.
+  grip: (
+    <>
+      <circle cx="9" cy="6" r="1" />
+      <circle cx="9" cy="12" r="1" />
+      <circle cx="9" cy="18" r="1" />
+      <circle cx="15" cy="6" r="1" />
+      <circle cx="15" cy="12" r="1" />
+      <circle cx="15" cy="18" r="1" />
     </>
   ),
   "external-link": (

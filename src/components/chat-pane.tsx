@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import AutonomyDialog from "./autonomy-dialog";
+import AutonomyLockedDialog from "./autonomy-locked-dialog";
 import ChatTranscript from "./chat-transcript";
 import Icon from "./icon";
 import ModelPicker from "./model-picker";
@@ -40,6 +41,7 @@ export default function ChatPane({
   busy,
   onBusy,
   onLoadCommand,
+  onRunCommand,
   onEnvelope,
 }: {
   agent: AgentConfig;
@@ -47,6 +49,8 @@ export default function ChatPane({
   busy: boolean;
   onBusy: (busy: boolean) => void;
   onLoadCommand: (commandId: string, args: Record<string, string>) => void;
+  /** Approve a proposal: issues it through the same route the Run button uses. */
+  onRunCommand: (commandId: string, args: Record<string, string>) => void;
   /** A tool result, handed to the panes that already render envelopes. */
   onEnvelope: (event: ChatEventWire) => void;
 }) {
@@ -58,6 +62,7 @@ export default function ChatPane({
   const [loaded, setLoaded] = useState<Set<string>>(new Set());
 
   const [autonomy, setAutonomy] = useState(agent.autonomy.active);
+  const [lockedOpen, setLockedOpen] = useState(false);
   const [challenge, setChallenge] = useState<{
     challenge: AutonomyChallenge;
     rejected?: string;
@@ -213,13 +218,29 @@ export default function ChatPane({
               <span className="ellipsis">{model || "no model"}</span>
             </button>
 
+            {/*
+              The mode, and — when it cannot be changed — the way to find out
+              why. The chip stays LIVE while autonomy is unavailable rather than
+              going grey: a disabled control with a tooltip is a dead end for
+              anyone on a touch screen or a keyboard, and the reason is exactly
+              what an operator is reaching for when they press it.
+
+              `disabled` here is the pane's own busy flag, never the capability.
+            */}
             <button
               type="button"
               className="chat-chip"
-              data-mode={autonomy ? "full" : "reads"}
-              disabled={disabled || !agent.autonomy.offerable}
-              title={agent.autonomy.reason ?? "How much the agent may do without asking"}
-              onClick={() => void toggleAutonomy(!autonomy)}
+              data-mode={autonomy ? "full" : agent.autonomy.offerable ? "reads" : "locked"}
+              disabled={disabled}
+              aria-haspopup={!agent.autonomy.offerable ? "dialog" : undefined}
+              title={
+                agent.autonomy.offerable
+                  ? "How much the agent may do without asking"
+                  : "Why the agent asks first"
+              }
+              onClick={() =>
+                agent.autonomy.offerable ? void toggleAutonomy(!autonomy) : setLockedOpen(true)
+              }
             >
               <Icon name={autonomy ? "alert-triangle" : "lock"} size={12} />
               {autonomy ? "Full autonomy" : "Free reads only"}
@@ -248,14 +269,12 @@ export default function ChatPane({
               />
             )}
 
-            {!agent.autonomy.offerable && agent.autonomy.reason && (
-              <p className="provider-reason">{agent.autonomy.reason}</p>
-            )}
-
             <ChatTranscript
               turns={turns}
               capabilities={capabilities}
+              busy={busy || disabled}
               loadedProposals={loaded}
+              onRunCommand={onRunCommand}
               onLoadCommand={(id, args) => {
                 setLoaded((prev) => new Set(prev).add(id));
                 onLoadCommand(id, args);
@@ -297,6 +316,15 @@ export default function ChatPane({
           rejected={challenge.rejected}
           onCancel={() => setChallenge(null)}
           onConfirm={() => void toggleAutonomy(true, challenge.challenge)}
+        />
+      )}
+
+      {lockedOpen && (
+        <AutonomyLockedDialog
+          reason={
+            agent.autonomy.reason ?? "Full autonomy is not offered on this deploy."
+          }
+          onClose={() => setLockedOpen(false)}
         />
       )}
     </>

@@ -4,7 +4,8 @@ import { useCallback, useState } from "react";
 import ChatPane from "./chat-pane";
 import CommandPane from "./command-pane";
 import ConfirmDialog, { type ConfirmRequest } from "./confirm-dialog";
-import Masthead, { type Ceiling, type Wallet } from "./masthead";
+import FightersPane from "./fighters-pane";
+import Masthead, { type Ceiling, type House, type Wallet } from "./masthead";
 import Rail from "./rail";
 import ResponseLog, { type LogRow } from "./response-log";
 import ResponsePane, { type Envelope } from "./response-pane";
@@ -22,9 +23,12 @@ import { logTime } from "@/lib/format";
  * the server sent, and every command's availability was decided server-side and
  * shipped as data.
  *
- * There is exactly one place a request originates in this whole client tree,
- * and it is the `fetch("/api/act")` below. `test/one-fetch.test.ts` fails on a
- * second.
+ * Every request this client tree makes goes to **one destination**, and it is
+ * the `fetch("/api/act")` below — the same literal `action-picker.tsx` and
+ * `fighters-pane.tsx` use. `test/one-fetch.test.ts` enforces the destination,
+ * not the number of call sites, and the distinction is the point: several
+ * components may ask, and every one of them is asking through the single
+ * guarded path. A second *address* is what the test fails on.
  */
 
 const FIRST = COMMANDS[0];
@@ -36,8 +40,10 @@ export default function Console({
   agent,
   forgeNote,
   stakeRange,
+  sequenceLength,
   ceiling,
   wallet,
+  house,
   seat,
 }: {
   operator: string | null;
@@ -46,8 +52,12 @@ export default function Console({
   agent: AgentConfig;
   forgeNote: string | null;
   stakeRange: StakeRange;
+  /** The canon's published sequence length, or null if it publishes none. */
+  sequenceLength: number | null;
   ceiling: Ceiling;
   wallet: Wallet | null;
+  /** The operator's House, read from the arena. Null when it published none. */
+  house: House | null;
   seat: SeatSnapshot;
 }) {
   const [active, setActive] = useState<Command>(FIRST);
@@ -56,9 +66,12 @@ export default function Console({
   const [log, setLog] = useState<LogRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<Ceiling>(ceiling);
-  const [pending, setPending] = useState<
-    { request: ConfirmRequest; confirm: { amountCents: number; payer: string } } | null
-  >(null);
+  const [pending, setPending] = useState<{
+    cmd: Command;
+    args: Record<string, string>;
+    request: ConfirmRequest;
+    confirm: { amountCents: number; payer: string };
+  } | null>(null);
 
   /**
    * One envelope, absorbed.
@@ -107,14 +120,28 @@ export default function Console({
     setArgs(next);
   }, []);
 
+  /**
+   * Issue one command. The single place this client tree reaches the arena.
+   *
+   * `sendArgs` is explicit rather than closed over, because there are now two
+   * callers with two different argument sources: the command pane, which sends
+   * the form's `args`, and an approved agent proposal, which sends the
+   * arguments printed on its own card. Reading `args` here regardless would
+   * have made "Approve" issue whatever happened to be typed in the form — the
+   * wrong request, silently, and the one that reads as approved.
+   */
   const send = useCallback(
-    async (cmd: Command, confirm?: { amountCents: number; payer: string }) => {
+    async (
+      cmd: Command,
+      sendArgs: Record<string, string>,
+      confirm?: { amountCents: number; payer: string },
+    ) => {
       setBusy(true);
       try {
         const res = await fetch("/api/act", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id: cmd.id, args, confirm }),
+          body: JSON.stringify({ id: cmd.id, args: sendArgs, confirm }),
         });
         const data = (await res.json()) as Envelope;
 
@@ -129,6 +156,12 @@ export default function Console({
             destructive?: boolean;
           };
           setPending({
+            // The command AND its arguments, captured. Resubmitting from
+            // `active`/`args` would confirm one request and send another if the
+            // operator touched the form — or if the 428 came from a proposal,
+            // which has no form at all.
+            cmd,
+            args: sendArgs,
             request: {
               commandLabel: cmd.label,
               amountCents: detail.amountCents ?? 0,
@@ -160,7 +193,31 @@ export default function Console({
         setBusy(false);
       }
     },
-    [absorb, args, operator],
+    [absorb, operator],
+  );
+
+  /**
+   * An agent proposal, approved.
+   *
+   * Not a second execution path — it is `send` with the proposal's own
+   * arguments, so every gate on `/api/act` runs in the same order it does for a
+   * manual Run, and a paid command still comes back 428 for the confirmation
+   * dialog. It also loads the command into the pane, so what was approved stays
+   * visible afterwards rather than only in the log.
+   *
+   * Declared AFTER `send` and depending on it, rather than earlier with an empty
+   * dependency list: an approval that closed over a stale `send` would post with
+   * a stale `operator`, and the confirmation echo would name the wrong payer.
+   */
+  const runCommand = useCallback(
+    (commandId: string, next: Record<string, string>) => {
+      const cmd = byId(commandId);
+      if (!cmd) return;
+      setActive(cmd);
+      setArgs(next);
+      void send(cmd, next);
+    },
+    [send],
   );
 
   /** A tool the agent ran. Same envelope, same panes, same log. */
@@ -184,6 +241,7 @@ export default function Console({
         reachable={seat.reachable}
         ceiling={live}
         wallet={wallet}
+        house={house}
         onTightened={(cap) => setLive((prev) => ({ ...prev, capCents: cap }))}
       />
 
@@ -203,6 +261,7 @@ export default function Console({
           busy={busy}
           onBusy={setBusy}
           onLoadCommand={loadCommand}
+          onRunCommand={runCommand}
           onEnvelope={onAgentEvent}
         />
 
@@ -213,8 +272,23 @@ export default function Console({
           busy={busy}
           stakeRange={stakeRange}
           forgeNote={forgeNote}
+          sequenceLength={sequenceLength}
           onArg={(name, value) => setArgs((prev) => ({ ...prev, [name]: value }))}
-          onRun={() => void send(active)}
+          onRun={() => void send(active, args)}
+        />
+
+        {/*
+          `loadCommand` is handed over as-is. It already does exactly what
+          arming needs — select a command and fill its fields, running nothing —
+          because that is what an accepted agent proposal does too. The rail's
+          own select cannot be reused: it CLEARS args deliberately, since a
+          stale field left over from the previous command is a wrong request.
+        */}
+        <FightersPane
+          capabilities={capabilities}
+          disabled={busy}
+          sequenceLength={sequenceLength}
+          onArm={loadCommand}
         />
 
         <ResponsePane envelope={envelope} />
@@ -229,9 +303,9 @@ export default function Console({
           request={pending.request}
           onCancel={() => setPending(null)}
           onConfirm={() => {
-            const confirm = pending.confirm;
+            const { cmd, args: confirmedArgs, confirm } = pending;
             setPending(null);
-            void send(active, confirm);
+            void send(cmd, confirmedArgs, confirm);
           }}
         />
       )}

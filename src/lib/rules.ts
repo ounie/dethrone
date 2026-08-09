@@ -40,6 +40,22 @@ export interface Rules {
   /** The canon's own sentence about forging, rendered verbatim where present. */
   forgeNote: string | null;
   duel: { enabled: boolean; minStakeCents: number | null; maxStakeCents: number | null };
+  /**
+   * The actions layer's shape, as the canon publishes it.
+   *
+   * Read rather than typed, for the reason everything else here is read: five
+   * is a RULE. A console that hard-coded five slots would be a second
+   * implementation of `actions-v1`, correct today and wrong the version it
+   * changes — and wrong in the worst direction, because a form that silently
+   * offers the old count produces a request the arena refuses after the
+   * operator has done the work.
+   *
+   * Null when the canon publishes nothing, and the caller must then impose no
+   * limit at all rather than fall back to a number. A guessed cap is the same
+   * mistake with a friendlier face; an uncapped list is honest and the arena
+   * still refuses the rest.
+   */
+  actions: { sequenceLength: number | null; menuSize: number | null };
   /** Feature flags the console can infer from published fields alone. */
   features: Partial<Record<FeatureFlag, boolean>>;
   arena: { slug: string; displayName: string } | null;
@@ -67,6 +83,7 @@ const UNREACHABLE: Rules = {
   money: {},
   forgeNote: null,
   duel: { enabled: false, minStakeCents: null, maxStakeCents: null },
+  actions: { sequenceLength: null, menuSize: null },
   features: {},
   arena: null,
   fetchedAt: 0,
@@ -81,6 +98,7 @@ function shape(body: unknown, interfaceVersion: string | null): Rules {
   const money = (b.money ?? {}) as Record<string, { cents?: unknown }>;
   const forge = (b.forge ?? {}) as Record<string, unknown>;
   const duel = (b.duel ?? {}) as Record<string, unknown>;
+  const actions = (b.actions ?? {}) as Record<string, unknown>;
 
   const duelEnabled = duel.enabled === true;
 
@@ -98,6 +116,10 @@ function shape(body: unknown, interfaceVersion: string | null): Rules {
       enabled: duelEnabled,
       minStakeCents: num(duel.minStakeCents),
       maxStakeCents: num(duel.maxStakeCents),
+    },
+    actions: {
+      sequenceLength: num(actions.sequenceLength),
+      menuSize: num(actions.menuSize),
     },
     // Only `duels` is published directly. The rest are discovered the honest
     // way — a 404 that carries the interface header — rather than guessed at

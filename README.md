@@ -42,7 +42,22 @@ Grouped by cost, because cost is the only access control in this system — ther
 
 **Sequences get a picker, not a text box.** A submission is five integers, but they are indices into a menu that depends on the fighter's genome — so the field loads that menu through the same `/api/act` path every other button uses, and you choose in exchange order. It shows the selection window as the arena last reported it, with the time of the read beside it, and **no countdown**: a ticking clock here would be the window rule reimplemented in a browser, and the day the two disagree the one on your screen is the wrong one.
 
-It also does not check that you picked five, or that an index is in range. Those are the canon's rules; the console forwards what you chose and renders the refusal.
+The count comes from the canon too. `GET /api/rules` publishes `actions.sequenceLength`, and the picker stops accepting at that number — **an arena that publishes none gets no cap at all**, rather than a hard-coded five. A guessed length is a game rule living in a browser, and it would refuse a legal plan the day that rule versions. An index out of range is likewise the canon's refusal to give, not this app's.
+
+---
+
+## Fighters
+
+The panel this console was missing. It opens with your Stable already read and your prime fighter selected — free reads, nothing scheduled, nothing that can spend.
+
+- **The roster**: every fighter you hold, with its portrait and its name.
+- **Its sixteen actions**, in wire order, straight from the arena. Not derived here — a console with its own copy of the action tables is a second implementation of `actions-v1`, and it would teach you to submit the wrong five the day they version.
+- **A plan**: pick from the menu, drag a row to reorder it (or use its arrows), draw at random, and save the result as a named combo you can apply to any fighter later.
+- **Three arm buttons** — challenge, post a duel, take a duel — that fill the command pane and stop. Nothing here settles an amount; the Run button does, and it is still the only one that can.
+
+**Combos store actions, not positions.** The five integers you submit are indices into *one fighter's* menu. Saved as integers and replayed on a different fighter they would be five perfectly legal integers naming five completely different moves — accepted by the arena, wrong in the fight, and silent until the verdict. So a combo records action ids and resolves them against whichever fighter you apply it to, filling what that fighter can do and naming what it cannot.
+
+**And a plan waits for a window, because the arena will not take one earlier.** `POST /challenge` carries a character id and nothing else: selection was moved out of pay time on purpose, since a challenger who picks at payment is judged against whoever holds the seat later — which may not be who they picked against. So the window opens when you are *paired*, lasts a few minutes, and is discoverable only by asking. The panel polls that free read, lights the Submit button the moment the arena reports a window, and waits for you to press it. It never fires on its own.
 
 There is no bearer token anywhere in this application. Where the reference agent uses a participant token to see its own side of a match early, this console signs `match:{id}` instead — the same capability, with no credential to store, leak, or expire.
 
@@ -130,9 +145,11 @@ Set none of these and the pane renders disabled with the reason, exactly like a 
 
 ### What it may do
 
-**By default: the free reads, and nothing else.** Ask it who holds the seat and it reads the seat. Ask it to forge and it reads the rules, derives your fighter — both free — and then hands you a **proposal**: a card naming the command and the price, whose button loads the real form into the pane below, pre-filled. You see the arguments as editable fields and the real preview of the body. You press the real Run button, and hit the same 428 confirmation any manual command hits.
+**By default: the free reads, and nothing else.** Ask it who holds the seat and it reads the seat. Ask it to forge and it reads the rules, derives your fighter — both free — and then hands you a **proposal**: a card naming the command, its price, and every argument it intends to send.
 
-That costs one extra click, and it is the correct price for a machine spending your money. It also keeps something true that is easy to lose: there is exactly one ember button on this screen, and it is the one you press yourself.
+You answer it two ways. **Approve** issues it there and then, through the same `/api/act` the Run button uses — so the tier gate, the ceiling, the host check and the signature all run in the same order, and a paid command still comes back 428 for the confirmation dialog with the figure the *server* computed. **Edit first** loads the real form into the pane below instead, pre-filled, for when you want to change something before it goes.
+
+Approving is not a shortcut around anything. The card prints the arguments before you press it, so nothing is hidden by skipping the form, and the consequential button for a paid command still lives in the confirmation dialog — which means there is still exactly one ember button on this screen, and it is still the one you press yourself.
 
 **Full autonomy** is the other mode, and it is off until you do three separate things. Set `CONSOLE_ALLOW_FULL_AUTONOMY=true`. Then turn it on in the UI, which is a **428 naming terms the server composed** — the payer, the per-action cap, the sitting ceiling — that your browser echoes back unchanged. Tighten the ceiling while that dialog is open and the echo no longer matches, so you read the new terms instead of confirming stale ones.
 

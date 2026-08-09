@@ -32,6 +32,12 @@ the property it guards is invisible until it is violated.
 
 ### `one-fetch` — exactly one door to the canon
 
+It enforces **one destination, not one call site.** Four components now `fetch`
+`"/api/act"` — `console.tsx`, `action-picker.tsx`, `fighters-pane.tsx` and the
+approve button's path through `console.tsx` — and that is fine, because every
+one of them is asking through the single guarded route. A second *address* is
+what fails.
+
 Three separate traps:
 
 - **A new same-origin route** must be added to `OWN_ROUTES` in
@@ -172,11 +178,42 @@ end is not a revoke.
 
 ---
 
+## The Fighters panel
+
+Roster → portrait → the sixteen actions → a plan → a window. Four things about
+it are load-bearing:
+
+**It cannot spend.** Its three arm buttons call `loadCommand`, which selects a
+catalogue command and fills its fields. `test/fighters-pane.test.ts` reads the
+AST and fails if any `act(...)` call names a `tier: "paid"` command — that is
+the mechanism, not the comment.
+
+**Five is read, never typed.** `GET /api/rules` publishes
+`actions.sequenceLength`, threaded through `lib/rules.ts` → `page.tsx` →
+`Console` → the pane → `SequenceBuilder`'s `capacity`. **Null means no cap at
+all**, not a fallback of five: a guessed length is a game rule in a browser, and
+it would refuse a legal plan the day the rule versions.
+
+**The plan is memory-only, and combos are not the same thing.** A plan dies with
+the tab, deliberately — a persisted one is a standing sequence, which the arena
+has no concept of on purpose. Saved combos DO persist, in `localStorage`, and
+are a different object: they store stable **action ids**, not indices, because
+indices are positions in one fighter's menu and replaying them on another
+fighter submits five legal integers naming five different moves. `lib/combos.ts`
+and `test/combos.test.ts` carry that argument.
+
+**Approving a proposal is not a second execution path.** `chat-proposal.tsx`'s
+approve button calls `runCommand`, which is `send` with the proposal's own
+arguments — every gate on `/api/act` runs in the same order, and a paid command
+still earns its 428 and the confirmation dialog. `send` takes its args
+explicitly for exactly this reason: closing over the form's `args` would make
+"Approve" issue whatever happened to be typed there.
+
 ## Layout
 
-`.console` is a three-column grid: rail (sticky, spans all rows), a
-cause-things column (chat → command → log), and a see-things column (response →
-seat).
+`.console` is a four-row grid: rail (sticky, spans all rows), fighters (spanning
+both content columns, above everything), a cause-things column (chat → command →
+log), and a see-things column (response → seat).
 
 ⚠️ **The rail is `position: sticky`, so nothing may span into column one.** A
 sticky element stays pinned after the page scrolls past its grid area; an area
@@ -198,6 +235,13 @@ frames, a voice. Amber (`--awaiting`) means a guard is off. **No token counts an
 no model pricing anywhere**: that number is money, it would want ember, and it
 would be a second currency on a screen whose whole argument rests on there being
 one.
+
+The five `--type-*` hues are the one place five colours are spent at once, and
+they are a taxonomy rather than a signal. Two are deliberately not the obvious
+token: `strike` is salmon and never `--ember-*`, because ember is the money
+colour and a strike badge would put it on sixteen menu rows; `bind` is a duller,
+lighter gold than `--gold-400`, which is the frame material. They are safe as
+colour only because every tag also prints its own name.
 
 ---
 

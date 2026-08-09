@@ -61,6 +61,7 @@ export default function CommandPane({
   busy,
   stakeRange,
   forgeNote,
+  sequenceLength,
   onArg,
   onRun,
 }: {
@@ -70,6 +71,8 @@ export default function CommandPane({
   busy: boolean;
   stakeRange: StakeRange;
   forgeNote: string | null;
+  /** The canon's published sequence length, or null. Passed straight to the picker. */
+  sequenceLength: number | null;
   onArg: (name: string, value: string) => void;
   onRun: () => void;
 }) {
@@ -133,6 +136,7 @@ export default function CommandPane({
 
                   {field.kind === "actions" ? (
                     <ActionPicker
+                      capacity={sequenceLength}
                       matchId={args.id ?? ""}
                       value={args[field.name] ?? ""}
                       disabled={!capability.enabled}

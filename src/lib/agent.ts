@@ -72,7 +72,11 @@ export interface AgentConfig {
  * The two modes.
  *
  * `reads` — the agent runs the free reads and nothing else. Anything that would
- * sign or spend comes back as a proposal the operator loads and runs.
+ * sign or spend comes back as a PROPOSAL, which the operator approves (issuing
+ * it through the same guarded route the Run button uses) or loads into the
+ * command pane to edit first. Approving a paid one still earns the 428 and the
+ * confirmation dialog: the mode decides who may act, never what a payment costs
+ * or whether it is announced.
  *
  * `full` — the agent may also sign and pay, bounded by the per-action cap, the
  * sitting ceiling, and the offer gate. Requires a server-held grant; this string
