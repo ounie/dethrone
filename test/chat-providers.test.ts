@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /**
  * Which providers can run here, and what they say when they cannot.
@@ -17,12 +20,34 @@ function env(over: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
   return over as NodeJS.ProcessEnv;
 }
 
-const bare = env({ PATH: process.env.PATH });
+/**
+ * A PATH containing a `claude` that exists, built here rather than borrowed
+ * from the machine.
+ *
+ * The first version of this file used `process.env.PATH` and asserted the
+ * provider was available. That passed on a laptop with Claude Code installed
+ * and failed in CI, which is to say it asserted a property of the developer's
+ * machine rather than of the code — the exact thing a test must not do. CI
+ * caught it, correctly, on a docs-only pull request.
+ */
+let fakeBin: string;
+
+beforeAll(() => {
+  fakeBin = mkdtempSync(join(tmpdir(), "console-claude-"));
+  const exe = join(fakeBin, process.platform === "win32" ? "claude.cmd" : "claude");
+  writeFileSync(exe, "#!/bin/sh\nexit 0\n");
+  chmodSync(exe, 0o755);
+});
+
+afterAll(() => rmSync(fakeBin, { recursive: true, force: true }));
+
+/** Deterministic "Claude Code is installed", on any machine. */
+const bare = () => env({ PATH: fakeBin });
 
 describe("claude-max: the one that needs no key, and the one that cannot run everywhere", () => {
   it("is available locally, with no key of any kind set", async () => {
     const { provider } = await import("@/lib/chat/providers/claude-max");
-    expect(provider.unavailable(bare)).toBeNull();
+    expect(provider.unavailable(bare())).toBeNull();
   });
 
   /**
@@ -33,7 +58,7 @@ describe("claude-max: the one that needs no key, and the one that cannot run eve
    */
   it("says local-only on a hosted deploy, and names the way out", async () => {
     const { provider } = await import("@/lib/chat/providers/claude-max");
-    const reason = provider.unavailable(env({ ...bare, VERCEL: "1" }))!;
+    const reason = provider.unavailable(env({ ...bare(), VERCEL: "1" }))!;
 
     expect(reason).toMatch(/LOCAL RUNS ONLY/);
     // The remedy, not just the diagnosis.
@@ -65,7 +90,7 @@ describe("claude-max: the one that needs no key, and the one that cannot run eve
 
   it("honours the explicit off switch", async () => {
     const { provider } = await import("@/lib/chat/providers/claude-max");
-    expect(provider.unavailable(env({ ...bare, CONSOLE_CHAT_DISABLE_SUBPROCESS: "true" }))).toContain(
+    expect(provider.unavailable(env({ ...bare(), CONSOLE_CHAT_DISABLE_SUBPROCESS: "true" }))).toContain(
       "CONSOLE_CHAT_DISABLE_SUBPROCESS",
     );
   });
@@ -117,9 +142,7 @@ describe("the three key-based providers name the variable they need", () => {
  */
 describe("the subscription provider cannot be made to bill an API key", () => {
   it("strips both credential variables from the subprocess environment", async () => {
-    const { read } = await import("./graph");
-    const { SRC } = await import("./graph");
-    const { join } = await import("node:path");
+    const { read, SRC } = await import("./graph");
     const source = read(join(SRC, "lib/chat/providers/claude-max.ts"));
 
     // The env is handed to the SDK, so the stripping must be visible here.
@@ -133,7 +156,6 @@ describe("the subscription provider cannot be made to bill an API key", () => {
     // auto-approves before canUseTool runs, making the callback dead code for
     // every tool it was written to allow.
     const { read, SRC } = await import("./graph");
-    const { join } = await import("node:path");
     const source = read(join(SRC, "lib/chat/providers/claude-max.ts"));
 
     expect(source).toMatch(/allowedTools:\s*\[\]/);
