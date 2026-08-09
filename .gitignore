@@ -21,3 +21,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 coverage/
+
+# The agent guide is local, not published. Root-anchored so it only ever means
+# this one file — a bare `CLAUDE.md` would also swallow any nested guide added
+# later, silently, which is the kind of ignore rule nobody thinks to check.
+#
+# ⚠️ Untracking is not erasure. This file is in the history of every commit up
+# to the one that removed it, and this repository is PUBLIC — `git log -p` still
+# reads it. Removing it from the past means rewriting history and force-pushing,
+# which breaks every existing clone. That is a separate decision, deliberately
+# not made here.
+/CLAUDE.md
