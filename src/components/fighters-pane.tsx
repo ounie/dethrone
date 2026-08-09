@@ -536,7 +536,19 @@ export default function FightersPane({
                   type="button"
                   className="icon-btn"
                   disabled={idle || !menu || sequenceLength === null}
-                  title="Fill every slot at random. Not the arena's draw — see the note below."
+                  /*
+                    A disabled control has to say why — the same rule
+                    `catalogue-render.test.ts` enforces on the rail. This one
+                    needs a length to draw TO, and the only honest source is the
+                    canon: an arena that publishes no `actions.sequenceLength`
+                    leaves this off rather than letting the console invent a
+                    number and fill five slots on a guess.
+                  */
+                  title={
+                    sequenceLength === null
+                      ? "This arena publishes no sequence length, so there is no count to draw to. Pick from the menu instead."
+                      : "Fill every slot at random. Not the arena's draw — see the note below."
+                  }
                   onClick={drawRandom}
                 >
                   <Icon name="rotate-cw" size={12} />
