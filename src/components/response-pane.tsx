@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import CodeBlock from "./code-block";
 import Icon from "./icon";
 import Panel from "./panel";
+import type { Envelope } from "@/lib/envelope";
 import { CONSOLE_ERROR_ENGLISH, type ConsoleErrorCode } from "@/lib/errors";
 import { RETRY_SAFETY, isCanonErrorBody, isCanonErrorCode } from "@/lib/interface";
+import { envelopeFilename, renderEnvelopeHtml } from "@/lib/response-html";
 
 /**
  * The raw envelope.
@@ -18,20 +20,17 @@ import { RETRY_SAFETY, isCanonErrorBody, isCanonErrorCode } from "@/lib/interfac
  * Exactly one thing is lifted out of the body, and it is `error.code` — because
  * a code is the thing to branch on and a message is not. English drifts; codes
  * don't.
+ *
+ * ## The fourth tab is a rendering, not a reading
+ *
+ * `HTML` shows the same envelope laid out as a page, with the arena's pictures
+ * as pictures. It is allowed to exist next to the rule above because it adds
+ * nothing and drops nothing: `lib/response-html.ts` walks every key that is
+ * there, keeps the arena's own names, prints an image URL as the image **and**
+ * the URL, and embeds the exact JSON at the foot of the document. What it buys
+ * is the thing JSON is bad at — a forged portrait is a fact about a response,
+ * and reading it as `"https://…/9f/3c1e….png"` is reading a checksum.
  */
-
-export interface Envelope {
-  request?: { method: string; path: string; paid: boolean; signed: boolean; scope: string | null };
-  status?: number;
-  ms?: number;
-  interface?: { expected: string; got: string | null; match: boolean };
-  featureDisabled?: boolean;
-  settled?: boolean;
-  settlement?: { success: boolean; payer?: string; transaction?: string } | null;
-  ceiling?: { enabled: boolean; spentCents?: number; cap?: number; reason?: string };
-  body?: unknown;
-  error?: { code: string; message: string; detail?: Record<string, unknown> };
-}
 
 function statusTone(status?: number): "ok" | "bad" | "muted" {
   if (status === undefined) return "muted";
@@ -67,12 +66,40 @@ function extractCode(env: Envelope): { code: string; message: string; origin: st
   return null;
 }
 
-const TABS = ["Body", "Envelope", "Raw"] as const;
+const TABS = ["Body", "Envelope", "Raw", "HTML"] as const;
 type Tab = (typeof TABS)[number];
+
+/**
+ * Save the document as a file.
+ *
+ * A blob and an anchor, which is the whole of it — no route, no server round
+ * trip, no second copy of the response leaving the browser. The bytes are the
+ * ones already on screen, so what lands on disk is what was being read.
+ */
+function download(name: string, html: string) {
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // Revoked on the next tick rather than immediately: Safari has cancelled the
+  // download when the object URL disappears in the same frame as the click.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 export default function ResponsePane({ envelope }: { envelope: Envelope | null }) {
   const [tab, setTab] = useState<Tab>("Body");
   const [copied, setCopied] = useState(false);
+
+  // Built only for the tab that shows it. Every response would otherwise
+  // serialise a whole document nobody asked to look at, and a Stable read is
+  // not a small object.
+  const html = useMemo(
+    () => (envelope && tab === "HTML" ? renderEnvelopeHtml(envelope) : ""),
+    [envelope, tab],
+  );
 
   if (!envelope) {
     return (
@@ -101,18 +128,33 @@ export default function ResponsePane({ envelope }: { envelope: Envelope | null }
       title="Response"
       className="pane-response"
       actions={
-        <button
-          type="button"
-          className="icon-btn labelled"
-          onClick={() => {
-            void navigator.clipboard.writeText(raw);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1400);
-          }}
-        >
-          <Icon name={copied ? "shield-check" : "copy"} size={13} />
-          {copied ? "Copied" : "Copy"}
-        </button>
+        <>
+          {/* Only on the tab that has a file to save. The other three are JSON,
+              and Copy already puts the whole envelope on the clipboard. */}
+          {tab === "HTML" && (
+            <button
+              type="button"
+              className="icon-btn labelled"
+              title="Save this response as a single HTML file"
+              onClick={() => download(envelopeFilename(envelope), html)}
+            >
+              <Icon name="download" size={13} />
+              Save
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-btn labelled"
+            onClick={() => {
+              void navigator.clipboard.writeText(raw);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1400);
+            }}
+          >
+            <Icon name={copied ? "shield-check" : "copy"} size={13} />
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </>
       }
     >
       <div className="pane-body">
@@ -170,7 +212,38 @@ export default function ResponsePane({ envelope }: { envelope: Envelope | null }
           ))}
         </div>
 
-        <CodeBlock text={shown} maxHeight="46vh" ariaLabel={`Response ${tab}`} />
+        {tab === "HTML" ? (
+          /*
+            An iframe, and the `sandbox` on it is the point rather than a
+            precaution bolted on afterwards.
+
+            This is the one surface in the console that renders an arena body as
+            MARKUP instead of as text, and arena bodies carry operator-supplied
+            strings — a fighter's name is whatever somebody typed. The document
+            escapes all of it and allows two URL schemes (see
+            `lib/response-html.ts`), and that argument is only as good as the
+            escaping. So the frame gets no `allow-scripts` and no
+            `allow-same-origin`: a hole in the escaping produces markup with no
+            script to run and no origin to run it in, and it cannot read this
+            page, its storage, or the DOM that holds the ceiling readout.
+
+            `allow-popups` is the one thing granted, so the URL under a picture
+            still opens when clicked. It cannot be reached without a human
+            click, because there is nothing in there to click for you.
+
+            `srcDoc` rather than a blob URL because a blob is same-origin with
+            this page, which is exactly the property being withheld.
+          */
+          <iframe
+            className="html-view"
+            title={`Response as HTML — ${envelope.request?.path ?? "response"}`}
+            sandbox="allow-popups"
+            referrerPolicy="no-referrer"
+            srcDoc={html}
+          />
+        ) : (
+          <CodeBlock text={shown} maxHeight="46vh" ariaLabel={`Response ${tab}`} />
+        )}
       </div>
     </Panel>
   );
