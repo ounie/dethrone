@@ -183,7 +183,7 @@ your disk ──► process env ──► server-only: wallet.ts · sign.ts · p
 ## Verifying it yourself
 
 ```bash
-pnpm test          # 501 assertions, no network — no arena, no language model
+pnpm test          # 533 assertions, no network — no arena, no language model
 pnpm test:live     # asks the real arena whether the catalogue is still honest
 pnpm typecheck
 pnpm build && pnpm scan:bundle

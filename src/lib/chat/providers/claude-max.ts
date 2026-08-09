@@ -1,4 +1,6 @@
 import "server-only";
+import { accessSync, constants } from "node:fs";
+import { delimiter, join } from "node:path";
 import { z } from "zod";
 import type { ModelChoice } from "../../agent";
 import { TURN_TIMEOUT_MS, type ChatEvent, type ProviderRunInput, type ToolExecutor } from "../types";
@@ -50,10 +52,14 @@ import { subprocessImpossible, type ProviderModule } from "./registry";
  * after this line was written is usable the day it ships.
  */
 const KNOWN_MODELS: ModelChoice[] = [
-  { id: "claude-opus-4-5", label: "Claude Opus 4.5" },
+  // First entry is the default the picker selects. Sonnet: this is a console
+  // that reads an API and reports what it says, which Sonnet does well and
+  // quickly, and a turn here is measured against a person waiting rather than
+  // against a benchmark. Opus is one click away for anything that needs it.
   { id: "sonnet", label: "Claude Sonnet (latest)" },
   { id: "opus", label: "Claude Opus (latest)" },
   { id: "haiku", label: "Claude Haiku (latest)" },
+  { id: "claude-opus-4-5", label: "Claude Opus 4.5" },
 ];
 
 const MCP_SERVER = "dethrone";
@@ -202,9 +208,7 @@ async function run(input: ProviderRunInput, execute: ToolExecutor): Promise<Chat
       for (const block of message.message.content) {
         if (block.type === "text" && block.text) events.push({ type: "text", text: block.text });
       }
-      if (message.error) {
-        throw new Error(`The local Claude session failed: ${message.error}`);
-      }
+      if (message.error) throw sessionError(message.error);
     } else if (message.type === "result" && message.subtype !== "success") {
       throw new Error(`The local Claude session ended: ${message.subtype}`);
     }
@@ -212,6 +216,53 @@ async function run(input: ProviderRunInput, execute: ToolExecutor): Promise<Chat
 
   return events;
 }
+
+/**
+ * Is the `claude` binary reachable from this process?
+ *
+ * Walks `PATH` rather than shelling out to `which`, because this runs on the
+ * availability path — rendering a picker must not spawn a process, and a check
+ * that costs a fork is a check somebody eventually caches wrongly.
+ *
+ * Worth knowing why this can fail on a machine where `claude` obviously works:
+ * a dev server inherits the `PATH` of whatever launched it. Started from your
+ * shell, an nvm-installed `claude` is there. Started from a GUI app, a
+ * launchd job, or an editor's integrated terminal with a trimmed environment,
+ * it may not be — and the honest answer then is "this process cannot see it",
+ * not "you do not have it".
+ */
+function claudeOnPath(env: NodeJS.ProcessEnv): boolean {
+  const path = env.PATH ?? env.Path;
+  if (!path) return false;
+  const names = process.platform === "win32" ? ["claude.cmd", "claude.exe", "claude"] : ["claude"];
+
+  for (const dir of path.split(delimiter)) {
+    if (!dir) continue;
+    for (const name of names) {
+      try {
+        accessSync(join(dir, name), constants.X_OK);
+        return true;
+      } catch {
+        // Next candidate.
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether you are *logged in* is deliberately not checked here.
+ *
+ * It is knowable — the credential is in the OS keychain on macOS — and reading
+ * it would be the wrong thing for this module to do. A console that reaches
+ * into your keychain to find out something it could simply be told has quietly
+ * become a thing that reads your keychain, and on some setups that pops an OS
+ * prompt for a UI render.
+ *
+ * So the session is discovered the way everything else here is discovered: by
+ * asking and rendering the refusal. The SDK reports `authentication_failed`,
+ * and `run()` turns that into a sentence naming `claude login`.
+ */
 
 /**
  * The environment the subprocess gets: this one, minus anything that would
@@ -228,6 +279,36 @@ function withoutApiKeys(env: NodeJS.ProcessEnv): Record<string, string> {
     if (v !== undefined) out[k] = v;
   }
   return out;
+}
+
+/**
+ * The SDK's error codes, said in words, with the fix where there is one.
+ *
+ * `authentication_failed` is the one that matters and the reason this function
+ * exists: it is what a console that never asked you to log in looks like when
+ * you have not. The generic message — "the local Claude session failed:
+ * authentication_failed" — is technically accurate and useless, because the
+ * thing the operator needs is the command to run.
+ */
+function sessionError(code: string): Error {
+  switch (code) {
+    case "authentication_failed":
+      return new Error(
+        "Not signed in to Claude on this machine. The console never asks you to authenticate — it borrows the session you already hold, so the credential stays yours. Run `claude login` in a terminal, then send this again.",
+      );
+    case "oauth_org_not_allowed":
+      return new Error(
+        "Your Claude organisation does not permit this. Signing in with a personal Max or Pro account, or asking an admin to allow it, is the way through.",
+      );
+    case "billing_error":
+      return new Error(
+        "Claude reported a billing problem with the signed-in account. Check the subscription is active.",
+      );
+    case "rate_limit":
+      return new Error("Your Claude plan is rate-limited right now. Nothing was sent to the arena.");
+    default:
+      return new Error(`The local Claude session failed: ${code}`);
+  }
 }
 
 /** The SDK wants an AbortController; the rest of this feature passes signals. */
@@ -248,7 +329,10 @@ export const provider: ProviderModule = {
       return "Disabled on this deploy by CONSOLE_CHAT_DISABLE_SUBPROCESS.";
     }
     if (subprocessImpossible(env)) {
-      return "The Claude Agent SDK drives a local `claude` subprocess and inherits your own Claude Code credentials. A serverless invocation has neither a machine to spawn it on nor credentials to inherit, so this provider only works when the console runs on your own computer.";
+      return "A Claude Max or Pro subscription works on LOCAL RUNS ONLY. It drives a `claude` subprocess and inherits credentials from your own machine, and a hosted deploy has neither a process to spawn nor credentials to inherit. On Vercel or any other host, use an LLM provider API key instead — set OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or an OpenAI-compatible base URL and key.";
+    }
+    if (!claudeOnPath(env)) {
+      return "This process cannot find the `claude` binary on its PATH. Install Claude Code and run `claude login`, or restart the console from a shell where `claude` resolves — a dev server started from a GUI app often inherits a trimmed PATH.";
     }
     return null;
   },

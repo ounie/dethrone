@@ -361,7 +361,7 @@ export function assertConsoleConfig(env: EnvLike, host: string | null): Finding[
       if (onVercel) {
         warn(
           "CONSOLE_CHAT_SUBPROCESS_UNAVAILABLE",
-          "CONSOLE_CHAT_PROVIDER=claude-max drives a local `claude` subprocess and inherits your own Claude Code credentials. A serverless invocation has neither a machine to spawn it on nor credentials to inherit, so this provider will render unavailable.",
+          "CONSOLE_CHAT_PROVIDER=claude-max, but a Claude Max or Pro subscription works on LOCAL RUNS ONLY: it drives a `claude` subprocess and inherits credentials from your own machine, and this deploy has neither. Use an LLM provider API key here instead — OPENROUTER_API_KEY, ANTHROPIC_API_KEY, or an OpenAI-compatible base URL and key.",
         );
       }
     } else if (!(named in PROVIDER_REQUIREMENTS)) {
