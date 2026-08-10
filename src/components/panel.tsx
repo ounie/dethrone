@@ -34,7 +34,27 @@ import Icon, { type IconName } from "./icon";
  * The body is UNMOUNTED rather than hidden with CSS. Hiding it would leave a
  * collapsed Fighters panel polling the arena from behind its own header, which
  * is the sort of thing that is invisible until it shows up in a rate limit.
+ *
+ * ## Moving
+ *
+ * A panel given a `drag` handle grows a grip at the left of its header and
+ * becomes draggable by that header. The grip is a real `<button>`, not a
+ * decorative glyph, because dragging is a mouse gesture and a mouse gesture on
+ * its own is not an interface — focus it and the arrow keys move the card.
+ *
+ * ⚠️ **`draggable` is on the HEADER, never on the section.** A draggable
+ * `<section>` makes every selection inside it start a drag instead, so a
+ * response body could not be selected to copy. The header is also what the
+ * operator is reaching for: it is the one strip of a card that holds no data.
  */
+/** What the layout hands a panel so its header can be dragged. */
+export interface PanelDrag {
+  label: string;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+}
+
 export default function Panel({
   icon,
   title,
@@ -43,6 +63,7 @@ export default function Panel({
   collapsible = true,
   children,
   className,
+  drag,
 }: {
   icon: IconName;
   title: string;
@@ -52,6 +73,8 @@ export default function Panel({
   collapsible?: boolean;
   children: React.ReactNode;
   className?: string;
+  /** Supplied by the layout; absent for a pane that cannot move. */
+  drag?: PanelDrag;
 }) {
   const [open, setOpen] = useState(true);
   const bodyId = useId();
@@ -63,8 +86,24 @@ export default function Panel({
       aria-label={title}
       data-collapsed={folded}
     >
-      <header className="panel-head">
+      <header
+        className="panel-head"
+        draggable={drag ? true : undefined}
+        onDragStart={drag?.onDragStart}
+        onDragEnd={drag?.onDragEnd}
+      >
         <span className="panel-title">
+          {drag && (
+            <button
+              type="button"
+              className="panel-grip"
+              aria-label={drag.label}
+              title={drag.label}
+              onKeyDown={drag.onKeyDown}
+            >
+              <Icon name="grip" size={13} />
+            </button>
+          )}
           <Icon name={icon} size={15} />
           {title}
         </span>

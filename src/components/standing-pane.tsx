@@ -1,7 +1,7 @@
 "use client";
 
 import Icon from "./icon";
-import Panel from "./panel";
+import Panel, { type PanelDrag } from "./panel";
 import Time from "./time";
 import type { MyDuel, MyMatch, Standing } from "@/lib/standing";
 import { stamp } from "@/lib/format";
@@ -106,13 +106,21 @@ function DuelRow({ duel }: { duel: MyDuel }) {
   );
 }
 
-export default function StandingPane({ standing }: { standing: Standing }) {
+export default function StandingPane({
+  standing,
+  drag,
+}: {
+  standing: Standing;
+  /** Handed down by the layout so this card can be moved. */
+  drag?: PanelDrag;
+}) {
   const live = standing.duels.filter((d) => d.live);
   const settled = standing.duels.filter((d) => !d.live);
   const s = standing;
 
   return (
-    <Panel icon="shield-check" title="Your standing" className="pane-standing">
+    <Panel
+      drag={drag} icon="shield-check" title="Your standing" className="pane-standing">
       <div className="standing-body">
         {!s.wallet ? (
           /* The read-only branch. Same shape as the masthead's notice: no key,

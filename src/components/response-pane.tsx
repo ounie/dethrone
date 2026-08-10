@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import CodeBlock from "./code-block";
 import Icon from "./icon";
-import Panel from "./panel";
+import Panel, { type PanelDrag } from "./panel";
 import type { Envelope } from "@/lib/envelope";
 import { CONSOLE_ERROR_ENGLISH, type ConsoleErrorCode } from "@/lib/errors";
 import { RETRY_SAFETY, isCanonErrorBody, isCanonErrorCode } from "@/lib/interface";
@@ -89,7 +89,14 @@ function download(name: string, html: string) {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export default function ResponsePane({ envelope }: { envelope: Envelope | null }) {
+export default function ResponsePane({
+  envelope,
+  drag,
+}: {
+  envelope: Envelope | null;
+  /** Handed down by the layout so this card can be moved. */
+  drag?: PanelDrag;
+}) {
   const [tab, setTab] = useState<Tab>("Body");
   const [copied, setCopied] = useState(false);
 
@@ -103,7 +110,8 @@ export default function ResponsePane({ envelope }: { envelope: Envelope | null }
 
   if (!envelope) {
     return (
-      <Panel icon="shield-check" title="Response" className="pane-response">
+      <Panel
+      drag={drag} icon="shield-check" title="Response" className="pane-response">
         <div className="pane-body empty">
           <Icon name="shield-check" size={26} />
           <p>No response yet.</p>

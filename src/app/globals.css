@@ -814,30 +814,134 @@ code {
  * rail is sticky and paints over anything that does once the page scrolls past
  * it. That bug put the catalogue on top of the seat readout.
  */
+/*
+   Three columns and two rows, and NO named areas any more.
+
+   Cards are arranged by the operator (`lib/layout.ts`), so their positions
+   cannot be written into a stylesheet — the grid holds three ZONES and each
+   zone stacks whatever it currently contains. That also retires the hazard
+   this file used to carry about editing three `grid-template-areas` blocks
+   together: there is one placement rule per zone now, and the breakpoints
+   change only which column a zone sits in.
+
+   The rail is deliberately NOT a zone. It is sticky and viewport-sized, and
+   anything landing under it is painted over once the page scrolls past — the
+   bug that once put the catalogue on top of the seat readout. It keeps column
+   one to itself, spanning both rows, and nothing else may enter column one. */
 .console {
   display: grid;
   grid-template-columns: minmax(0, 330px) minmax(0, 1fr) minmax(0, 1.05fr);
-  grid-template-areas:
-    "rail fighters fighters"
-    "rail chat     response"
-    "rail command  response"
-    "rail log      seat"
-    "rail .        standing";
+  grid-template-rows: auto auto;
   gap: var(--s4);
   align-items: start;
 }
 
+.zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  min-width: 0;
+}
+
+.zone-wide {
+  grid-column: 2 / 4;
+  grid-row: 1;
+}
+.zone-left {
+  grid-column: 2;
+  grid-row: 2;
+}
+.zone-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+/* An empty zone still has to be a target, or a card can never be moved back
+   into a column it was emptied out of. Only while something is being dragged —
+   an idle console shows no dashed boxes. */
+.console[data-dragging="true"] .zone[data-empty="true"] {
+  min-height: 76px;
+  border: 1px dashed var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+
+.zone-slot {
+  position: relative;
+  min-width: 0;
+}
+
+.zone-slot[data-dragging="true"] {
+  opacity: 0.45;
+}
+
+/* The insertion line. Gold, because it is a hint about arrangement and not a
+   claim about money or state. */
+.zone-slot[data-drop-before="true"]::before,
+.zone-tail {
+  content: "";
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--gold-400);
+  box-shadow: 0 0 10px -2px var(--gold-500);
+}
+
+.zone-slot[data-drop-before="true"]::before {
+  position: absolute;
+  top: calc(var(--s4) / -2 - 1px);
+  left: 0;
+  right: 0;
+}
+
+/* The grip: invisible until the header is hovered or it is focused, so seven
+   cards do not each wear a permanent handle. */
+.panel-grip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  margin-right: 2px;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.panel-head:hover .panel-grip,
+.panel-grip:focus-visible {
+  opacity: 1;
+}
+
+.panel-grip:focus-visible {
+  outline: 2px solid var(--border-gilt);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+.panel-head[draggable="true"] {
+  cursor: grab;
+}
+
+.layout-tools {
+  grid-column: 2 / 4;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.layout-hint {
+  font-size: 10.5px;
+}
+
 .pane-rail {
-  grid-area: rail;
+  grid-column: 1;
+  grid-row: 1 / 3;
   max-height: calc(100dvh - var(--s8));
   position: sticky;
   top: var(--s5);
-}
-.pane-chat {
-  grid-area: chat;
-}
-.pane-command {
-  grid-area: command;
 }
 
 /* "This card just changed."
@@ -881,21 +985,6 @@ code {
       var(--bevel-stone),
       var(--shadow-panel);
   }
-}
-.pane-response {
-  grid-area: response;
-}
-.pane-log {
-  grid-area: log;
-}
-.pane-standing {
-  grid-area: standing;
-}
-.pane-seat {
-  grid-area: seat;
-}
-.pane-fighters {
-  grid-area: fighters;
 }
 
 /* ── Rail ─────────────────────────────────────────────────────────────────── */
@@ -2878,14 +2967,27 @@ code {
      * catalogue stays visible the whole way down without ever obscuring what it
      * is meant to be read alongside.
      */
-    grid-template-areas:
-      "rail fighters"
-      "rail chat"
-      "rail command"
-      "rail response"
-      "rail log"
-      "rail seat"
-      "rail standing";
+    /* Two columns: the rail, and one content column. Every zone stacks into
+       column two in wide → left → right order. */
+    grid-template-rows: auto auto auto;
+  }
+  .zone-wide,
+  .zone-left,
+  .zone-right {
+    grid-column: 2;
+  }
+  .zone-wide {
+    grid-row: 1;
+  }
+  .zone-left {
+    grid-row: 2;
+  }
+  .zone-right {
+    grid-row: 3;
+  }
+  .layout-tools {
+    grid-column: 2;
+    grid-row: 4;
   }
   .masthead {
     grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
@@ -2919,15 +3021,29 @@ code {
 
   .console {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "rail"
-      "fighters"
-      "chat"
-      "command"
-      "response"
-      "log"
-      "seat"
-      "standing";
+    grid-template-rows: auto auto auto auto;
+  }
+  .console > .pane-rail {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .zone-wide,
+  .zone-left,
+  .zone-right,
+  .layout-tools {
+    grid-column: 1;
+  }
+  .zone-wide {
+    grid-row: 2;
+  }
+  .zone-left {
+    grid-row: 3;
+  }
+  .zone-right {
+    grid-row: 4;
+  }
+  .layout-tools {
+    grid-row: 5;
   }
   .pane-rail {
     position: static;
