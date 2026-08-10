@@ -31,6 +31,10 @@ describe("the key is unreachable from the client", () => {
     // consumed by a component, so the day someone "tidies" it into an import
     // from `wallet.ts` this fails instead of shipping.
     join(SRC, "lib/operator.ts"),
+    // The standing card's types. Produced in `page.tsx` beside the wallet and
+    // rendered by a client component, which is the same shape as the two above
+    // and the same reason it must stay value-free.
+    join(SRC, "lib/standing.ts"),
   ];
 
   for (const entry of entries) {

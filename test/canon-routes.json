@@ -1,8 +1,8 @@
 {
   "$comment": "GENERATED — do not edit by hand. Regenerate with `pnpm canon:sync <path-to-apps/web>`. This records the arena's route tree at the commit below; it is a checked-in snapshot, not a source of truth. test/live/canon.live.test.ts is what catches a route deleted after this was taken.",
   "source": "apps/web/src/app/api/**/route.ts",
-  "commit": "47c9f97ebd1b522ce813d01f654fc905a830be40",
-  "routeCount": 54,
+  "commit": "95c76a9c1b3bebb6873da946a01b629c2f9ae0df",
+  "routeCount": 55,
   "routes": [
     {
       "path": "/api/agent/[id]",
@@ -234,6 +234,17 @@
       "flag": "DUELS_ENABLED",
       "signScope": null,
       "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/duels/mine",
+      "methods": [
+        "GET"
+      ],
+      "flag": "DUELS_ENABLED",
+      "signScope": "duels:mine",
+      "paid": false,
       "adminOnly": false,
       "cronOnly": false
     },

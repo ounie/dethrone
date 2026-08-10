@@ -46,6 +46,76 @@ export function stamp(iso: string): string {
   return iso.length >= 19 ? `${iso.slice(0, 19).replace("T", " ")}Z` : iso;
 }
 
+/**
+ * The same instant, in the reader's own timezone.
+ *
+ * **Browser only.** On the server there is no reader to be local to, so calling
+ * this during a server render would silently format in the deploy's zone —
+ * which is why `components/time.tsx` exists and this is not called directly
+ * from anything that renders on both sides.
+ *
+ * Still not relative, and still not a clock: `stamp`'s argument against "3
+ * minutes ago" is that it keeps moving while the data does not, and this moves
+ * no more than the UTC string it replaces. It is the same instant with a
+ * different offset applied.
+ *
+ * `sv-SE` for the format rather than the language: it is the locale whose short
+ * form is already ISO-like (`2026-08-10 16:48:21`), so the shape an operator
+ * has been reading survives the change of zone. Falls back to the raw stamp if
+ * the runtime cannot do it.
+ */
+export function localStamp(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  try {
+    return new Intl.DateTimeFormat("sv-SE", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(at);
+  } catch {
+    return stamp(iso);
+  }
+}
+
+/**
+ * A short name for the reader's zone, so a localised time is never ambiguous.
+ *
+ * The SHORT form — `PDT`, `GMT+2` — and not the IANA name. The first draft
+ * rendered `America/Los_Angeles` beside every timestamp, which is nineteen
+ * characters of qualifier next to eight characters of value, on rows narrow
+ * enough that it pushed the time itself out of alignment.
+ *
+ * Abbreviations do collide (CST is three different offsets), which is why the
+ * full IANA name and the original UTC string both survive in the `title` of
+ * `components/time.tsx` — the precise answer is one hover away, and the row
+ * stays readable.
+ */
+export function zoneLabel(): string {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(
+      new Date(),
+    );
+    const zone = parts.find((p) => p.type === "timeZoneName")?.value;
+    return zone || Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+  } catch {
+    return "local";
+  }
+}
+
+/** The full IANA name, for a tooltip. Precise where the badge is short. */
+export function zoneName(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+  } catch {
+    return "local";
+  }
+}
+
 /** Local wall-clock for the session log. Session state, not canon state. */
 export function logTime(date: Date): string {
   return date.toISOString().slice(11, 19);

@@ -9,6 +9,8 @@ import { config } from "@/lib/config";
 import { capabilities } from "@/lib/registry";
 import { rules } from "@/lib/rules";
 import { spendStore } from "@/lib/spend";
+import { signedHeaders } from "@/lib/sign";
+import type { HeldTitle, Standing } from "@/lib/standing";
 import { address, hasWallet, selectedWalletId, wallets } from "@/lib/wallet";
 
 /**
@@ -54,13 +56,255 @@ async function houseOf(wallet: string): Promise<{ slug: string; name: string } |
   return slug && name ? { slug, name } : null;
 }
 
+/**
+ * Where the operator stands: their record, their matches, their duels.
+ *
+ * Three reads, all through `arena.call` like `houseOf` above — this file is a
+ * server component and the one-door invariant is about `arena.ts` being the
+ * only module that reaches the canon, which it still is.
+ *
+ * **Every one of them is allowed to fail.** A standing is a convenience on a
+ * screen whose actual job is to reach the arena, so a dead RPC or a disabled
+ * feature leaves a section saying it could not be read, and the console keeps
+ * working. That is the same choice `usdcBalance` and `houseOf` already make,
+ * and it is why `unreachable` is a field rather than a thrown error.
+ *
+ * The duel read is SIGNED, which makes it the first signed request this page
+ * issues. It is free and owner-only — the arena has no other way to answer
+ * "what am I in", because the pool is anonymous by design.
+ */
+async function standingFor(
+  me: string | null,
+  seatBody: unknown,
+  championWallet: string | null,
+): Promise<Standing> {
+  const seat = (seatBody ?? {}) as Record<string, unknown>;
+  const base: Standing = {
+    wallet: me,
+    holdsThrone:
+      me !== null && championWallet !== null && me.toLowerCase() === championWallet.toLowerCase(),
+    championWallet,
+    tookSeatAt: str(seat.tookSeatAt),
+    tenureDefenses: typeof seat.tenureDefenses === "number" ? seat.tenureDefenses : null,
+    jackpotUsdc: str(seat.currentJackpotUsdc),
+    record: null,
+    matches: [],
+    duels: [],
+    unreachable: { record: false, matches: false, duels: false },
+  };
+
+  if (!me) return base;
+  const mine = me.toLowerCase();
+
+  const [agentRead, boardRead, matchRead, duelRead] = await Promise.all([
+    arena.call({ method: "GET", path: `/api/agent/${encodeURIComponent(me)}`, paid: false }),
+    // The standing itself. `/api/agent` answers identity and titles; elo, wins,
+    // losses and defenses are the leaderboard view's, and the arena's own rule
+    // is that nothing computes a win rate for itself.
+    arena.call({ method: "GET", path: "/api/leaderboard", paid: false }),
+    arena.call({ method: "GET", path: "/api/matches", paid: false }),
+    signedRead("/api/duels/mine", "duels:mine"),
+  ]);
+
+  // ── The record and the titles ──────────────────────────────────────────────
+  if (agentRead.result?.ok) {
+    const body = (agentRead.result.body ?? {}) as {
+      agent?: { displayName?: unknown };
+      titles?: unknown;
+      duels?: { wins?: unknown; losses?: unknown };
+    };
+    const num = (v: unknown) => (typeof v === "number" ? v : null);
+
+    // This wallet's row on the board, or none. The view is returned whole and
+    // unpaged, so finding a row is a filter rather than a second request.
+    const board = (boardRead.result?.ok ? boardRead.result.body : null) as {
+      leaderboard?: unknown;
+    } | null;
+    const rows = Array.isArray(board?.leaderboard) ? board.leaderboard : [];
+    const row = rows.find(
+      (r) => str((r as { walletAddress?: unknown }).walletAddress)?.toLowerCase() === mine,
+    ) as Record<string, unknown> | undefined;
+    /*
+      Titles are held by CHARACTERS and by AGENTS, and the catalogue publishes
+      every title with its full holder list — so "which of these are mine" is a
+      filter over holders, not a second read. A title whose holders this wallet
+      is not in is simply somebody else's, and rendering the catalogue instead
+      would put every belt in the arena on the operator's own card.
+    */
+    const titles: HeldTitle[] = [];
+    for (const raw of Array.isArray(body.titles) ? body.titles : []) {
+      const t = raw as {
+        slug?: unknown;
+        display?: unknown;
+        predicate?: unknown;
+        holders?: unknown;
+      };
+      const holders = Array.isArray(t.holders) ? t.holders : [];
+      const held = holders.some(
+        (h) => str((h as { agentWallet?: unknown }).agentWallet)?.toLowerCase() === mine,
+      );
+      if (!held) continue;
+      const slug = str(t.slug);
+      const display = str(t.display);
+      if (slug && display) titles.push({ slug, display, predicate: str(t.predicate) });
+    }
+
+    base.record = {
+      displayName: str(body.agent?.displayName),
+      elo: num(row?.elo),
+      wins: num(row?.wins),
+      losses: num(row?.losses),
+      // The board's LIFETIME defenses. The seat read owns the tenure count, and
+      // the two are different numbers that are equal until the first vest.
+      defenses: num(row?.defenses),
+      rank: str(row?.rank),
+      winRate: str(row?.winRate),
+      earningsUsdc: str(row?.earningsUsdc),
+      titles,
+      duelWins: num(body.duels?.wins),
+      duelLosses: num(body.duels?.losses),
+    };
+  } else {
+    base.unreachable.record = true;
+  }
+
+  // ── The matches this wallet was in ─────────────────────────────────────────
+  if (matchRead.result?.ok) {
+    const body = (matchRead.result.body ?? {}) as { matches?: unknown };
+    const rows = Array.isArray(body.matches) ? body.matches : [];
+    for (const raw of rows) {
+      const m = raw as Record<string, unknown>;
+      const side = (n: string) =>
+        str((m[n] as { walletAddress?: unknown } | undefined)?.walletAddress);
+      const champ = side("champion");
+      const chall = side("challenger");
+      const isChamp = champ?.toLowerCase() === mine;
+      const isChall = chall?.toLowerCase() === mine;
+      if (!isChamp && !isChall) continue;
+      const id = str(m.id);
+      if (!id) continue;
+      base.matches.push({
+        id,
+        side: isChamp ? "champion" : "challenger",
+        opponent: isChamp ? chall : champ,
+        outcome: str(m.outcome),
+        status: str(m.status),
+        potAtStakeUsdc: str(m.potAtStakeUsdc),
+        endedAt: str(m.endedAt),
+        createdAt: str(m.createdAt),
+      });
+    }
+  } else {
+    base.unreachable.matches = true;
+  }
+
+  // ── The duels this wallet is in ────────────────────────────────────────────
+  if (duelRead?.result?.ok) {
+    const body = (duelRead.result.body ?? {}) as { duels?: unknown };
+    for (const raw of Array.isArray(body.duels) ? body.duels : []) {
+      const d = raw as Record<string, unknown>;
+      if (typeof d.id !== "number") continue;
+      const n = (v: unknown) => (typeof v === "number" ? v : null);
+      base.duels.push({
+        id: d.id,
+        state: str(d.state) ?? "unknown",
+        live: d.live === true,
+        arenaSlug: str(d.arenaSlug),
+        stakeUsdc: str(d.stakeUsdc),
+        viewer: str(d.viewer),
+        yourCharacterId: n(d.yourCharacterId),
+        opponentCharacterId: n(d.opponentCharacterId),
+        winnerCharacterId: n(d.winnerCharacterId),
+        revealed: d.revealed === true,
+        listedAt: str(d.listedAt),
+      });
+    }
+  } else {
+    /*
+      Not necessarily an error. `duels_mine` sits behind DUELS_ENABLED, so a
+      deploy with duels off answers a refusal and the section says it could not
+      be read — which is honest, and better than an empty list that would claim
+      this wallet is in no duels.
+    */
+    base.unreachable.duels = true;
+  }
+
+  return base;
+}
+
+/**
+ * One signed GET, or null when there is no key to sign with.
+ *
+ * `signedHeaders` throws `NoWalletError` on a keyless deploy rather than
+ * returning null, and this page renders on keyless deploys — so the read is
+ * wrapped rather than guarded by a second `hasWallet()` call that could drift
+ * from the one inside it.
+ */
+async function signedRead(path: string, scope: string) {
+  try {
+    return await arena.call({
+      method: "GET",
+      path,
+      paid: false,
+      headers: await signedHeaders(scope, "GET", path),
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Whatever the seat read returned, labelled. Nothing derived, nothing ticked. */
-function snapshot(body: unknown, reachable: boolean, fetchedAtIso: string): SeatSnapshot {
+function snapshot(
+  body: unknown,
+  reachable: boolean,
+  fetchedAtIso: string,
+  me: string | null,
+): SeatSnapshot {
   const seat = (body ?? {}) as Record<string, unknown>;
+  /*
+    The champion is an OBJECT, and reading it as a string showed "—" on a seat
+    this console was sitting on.
+
+    `GET /api/seat` answers `champion: { displayName, wallet, elo, wins, losses,
+    lifetimeDefenses }`. `str()` returns null for anything that is not a
+    non-empty string, so the field was silently null on every read — including
+    the one where the operator had just taken the throne, with `tookSeatAt` and
+    the jackpot right beside it filled in. A wrong "nobody holds the seat" on
+    the one card that answers "who holds the seat" is worse than a blank, and it
+    read as an arena problem rather than a parsing one.
+
+    The WALLET, not the display name: `displayName` is itself a shortened
+    address for an unnamed agent ("0x38a4…c154"), so rendering it would truncate
+    an already-truncated string and could never be compared to anything.
+  */
+  const champion = (seat.champion ?? null) as { wallet?: unknown } | null;
+  const championWallet = champion ? str(champion.wallet) : null;
+
+  // The fighter on the seat. Published as a pair by the arena — name and id
+  // together or not at all — so a half-answer is not representable here.
+  const fighter = (seat.reigningCharacter ?? null) as { id?: unknown; name?: unknown } | null;
+  const reigningCharacter =
+    fighter && typeof fighter.id === "number" && str(fighter.name)
+      ? { id: fighter.id, name: str(fighter.name)! }
+      : null;
+
   return {
     fetchedAtIso,
     reachable,
-    champion: str(seat.champion),
+    champion: championWallet,
+    reigningCharacter,
+    /*
+      Whether the seat is THIS console's.
+
+      Compared here rather than in the browser, and it is a comparison of two
+      strings the server already holds — not a rule. The console is forbidden
+      from deciding anything about the game; it is not forbidden from noticing
+      that two addresses it was given are the same one.
+
+      Lowercased on both sides because they do not agree on case: the seat read
+      returns a lowercase wallet and `wallet.ts` derives a checksummed one.
+    */
+    isMine: championWallet !== null && me !== null && championWallet.toLowerCase() === me.toLowerCase(),
     tookSeatAt: str(seat.tookSeatAt),
     tenureDefenses: typeof seat.tenureDefenses === "number" ? seat.tenureDefenses : null,
     jackpotUsdc: str(seat.currentJackpotUsdc),
@@ -131,6 +375,11 @@ export default async function Page() {
     },
   };
 
+  const seatBody = seatRead.result?.body;
+  const championWallet =
+    str(((seatBody ?? {}) as { champion?: { wallet?: unknown } }).champion?.wallet) ?? null;
+  const standing = await standingFor(me, seatBody, championWallet);
+
   const ledger = await spendStore().read();
 
   // A read of the chain, not of the canon: one `view` call, no key, no
@@ -171,7 +420,8 @@ export default async function Page() {
             : null
         }
         house={house}
-        seat={snapshot(seatRead.result?.body, reachable, new Date().toISOString())}
+        seat={snapshot(seatRead.result?.body, reachable, new Date().toISOString(), me)}
+        standing={standing}
       />
 
       <footer className="footnote">

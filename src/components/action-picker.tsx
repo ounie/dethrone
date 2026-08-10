@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import Icon from "./icon";
+import Time from "./time";
 import SequenceBuilder, { type MenuAction } from "./sequence-builder";
 import { stamp } from "@/lib/format";
 
@@ -134,16 +135,16 @@ export default function ActionPicker({
         {window &&
           (window.selection ? (
             <span className="window-state">
-              <span className="num">closes {stamp(window.selection.closesAt)}</span>
+              <span className="num">closes <Time iso={window.selection.closesAt} /></span>
               <span className="muted">
                 · challenger {window.selection.submitted.challenger ? "submitted" : "not yet"} ·
                 throne {window.selection.submitted.throne ? "submitted" : "not yet"}
               </span>
-              <span className="muted">· read {stamp(window.readAt)}</span>
+              <span className="muted">· read <Time iso={window.readAt} zone={false} /></span>
             </span>
           ) : (
             <span className="window-state muted">
-              No window open on this match as of {stamp(window.readAt)}.
+              No window open on this match as of <Time iso={window.readAt} zone={false} />.
             </span>
           ))}
       </div>

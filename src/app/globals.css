@@ -821,7 +821,8 @@ code {
     "rail fighters fighters"
     "rail chat     response"
     "rail command  response"
-    "rail log      seat";
+    "rail log      seat"
+    "rail .        standing";
   gap: var(--s4);
   align-items: start;
 }
@@ -886,6 +887,9 @@ code {
 }
 .pane-log {
   grid-area: log;
+}
+.pane-standing {
+  grid-area: standing;
 }
 .pane-seat {
   grid-area: seat;
@@ -1935,6 +1939,202 @@ code {
   padding: var(--s3);
 }
 
+/* ── Standing pane ────────────────────────────────────────────────────────── */
+
+.standing-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s4);
+  min-width: 0;
+}
+
+.standing-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.standing-block + .standing-block {
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.standing-block > .eyebrow {
+  margin: 0 0 var(--s2);
+}
+
+/* Gilt, because holding the seat is ceremony — and gilt rather than ember,
+   because ember means "this settles an amount now" and a standing reports. */
+.standing-headline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--s2);
+  font-family: var(--font-cinzel), serif;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--gold-300);
+}
+
+.standing-headline.muted {
+  color: var(--text-faint);
+  font-family: inherit;
+  letter-spacing: normal;
+  font-size: 12px;
+}
+
+.standing-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.standing-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.standing-value {
+  font-size: 12px;
+  color: var(--text-display);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.standing-value[data-empty="true"] {
+  color: var(--text-faint);
+}
+
+.standing-titles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.standing-titles li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--gold-400) 35%, transparent);
+  border-radius: var(--radius-xs);
+  color: var(--gold-300);
+  font-size: 10.5px;
+}
+
+.standing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.standing-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: 3px 0;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.standing-row-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-display);
+}
+
+.standing-row-side {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.standing-dim {
+  color: var(--text-faint);
+}
+
+/* The arena's own word for the state, rendered as it came. Teal for something
+   still in flight — the lane where nothing has settled yet — and neutral once
+   it has ended. Never ember: an outcome is a record, not a payment. */
+.standing-state {
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-faint);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.standing-state[data-live="true"] {
+  border-color: color-mix(in srgb, var(--teal-400) 45%, transparent);
+  color: var(--teal-400);
+}
+
+.standing-state[data-won="true"] {
+  border-color: color-mix(in srgb, var(--verdict-win) 45%, transparent);
+  color: var(--verdict-win);
+}
+
+/* `--verdict-loss-fg`, not `--verdict-loss`: the latter is a fill colour and
+   fails contrast as text on ink. There is no `--crimson-400` in this file. */
+.standing-state[data-won="false"] {
+  border-color: color-mix(in srgb, var(--verdict-loss-fg) 40%, transparent);
+  color: var(--verdict-loss-fg);
+}
+
+/* The zone, beside a localised time. Dim and small: it is a disambiguation,
+   not a value, and it must not compete with the number it qualifies. */
+.time-zone {
+  margin-left: 5px;
+  color: var(--text-faint);
+  font-size: 0.85em;
+}
+
+.standing-match {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 0;
+}
+
+.standing-match + .standing-match {
+  border-top: 1px solid var(--border-hairline);
+}
+
+.standing-match-meta {
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.standing-more > summary {
+  cursor: pointer;
+  padding: 3px 0;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
 /* ── Response pane ────────────────────────────────────────────────────────── */
 
 .status-chips {
@@ -2184,6 +2384,21 @@ code {
 .seat-rows {
   position: relative;
   z-index: 1;
+}
+
+/* "you", beside the champion's address. Teal: it is a fact about identity, not
+   about money, and it must not read as a state that costs anything. */
+.seat-mine {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  border: 1px solid color-mix(in srgb, var(--teal-400) 45%, transparent);
+  color: var(--teal-400);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: middle;
 }
 
 .seat-row {
@@ -2669,7 +2884,8 @@ code {
       "rail command"
       "rail response"
       "rail log"
-      "rail seat";
+      "rail seat"
+      "rail standing";
   }
   .masthead {
     grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
@@ -2710,7 +2926,8 @@ code {
       "command"
       "response"
       "log"
-      "seat";
+      "seat"
+      "standing";
   }
   .pane-rail {
     position: static;

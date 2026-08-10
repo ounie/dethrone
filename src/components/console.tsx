@@ -10,8 +10,10 @@ import Rail from "./rail";
 import ResponseLog, { type LogRow } from "./response-log";
 import ResponsePane from "./response-pane";
 import SeatState, { type SeatSnapshot } from "./seat-state";
+import StandingPane from "./standing-pane";
 import type { AgentConfig, ChatEventWire } from "@/lib/agent";
 import type { Capabilities, StakeRange } from "@/lib/capability";
+import type { Standing } from "@/lib/standing";
 import type { Envelope } from "@/lib/envelope";
 import { byId, COMMANDS, type Command } from "@/lib/commands";
 import { logTime } from "@/lib/format";
@@ -46,6 +48,7 @@ export default function Console({
   wallet,
   house,
   seat,
+  standing,
 }: {
   operator: string | null;
   baseUrl: string;
@@ -60,6 +63,8 @@ export default function Console({
   /** The operator's House, read from the arena. Null when it published none. */
   house: House | null;
   seat: SeatSnapshot;
+  /** Where the operator stands. Read on the server; never derived here. */
+  standing: Standing;
 }) {
   const [active, setActive] = useState<Command>(FIRST);
   const [args, setArgs] = useState<Record<string, string>>({});
@@ -337,7 +342,9 @@ export default function Console({
 
         <ResponseLog rows={log} />
 
-        <SeatState seat={seat} />
+        <SeatState seat={seat} baseUrl={baseUrl} />
+
+        <StandingPane standing={standing} />
       </div>
 
       {pending && (
