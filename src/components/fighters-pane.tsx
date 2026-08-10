@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import Dialog from "./dialog";
 import Icon from "./icon";
 import Panel from "./panel";
+import Time from "./time";
 import SequenceBuilder, { type MenuAction } from "./sequence-builder";
 import type { Capabilities } from "@/lib/capability";
 import {
@@ -1037,7 +1038,7 @@ export default function FightersPane({
                 <div className="window-state">
                   {watch.selection ? (
                     <>
-                      <span className="num">closes {stamp(watch.selection.closesAt)}</span>
+                      <span className="num">closes <Time iso={watch.selection.closesAt} /></span>
                       <span className="muted">
                         {" "}
                         · challenger{" "}
@@ -1052,7 +1053,12 @@ export default function FightersPane({
                         : "Stopped asking. Nothing had opened by the last read."}
                     </span>
                   )}
-                  {watch.readAt && <span className="muted"> · read {stamp(watch.readAt)}</span>}
+                  {watch.readAt && (
+                    <span className="muted">
+                      {" · read "}
+                      <Time iso={watch.readAt} zone={false} />
+                    </span>
+                  )}
                 </div>
 
                 <div className="picker-row">

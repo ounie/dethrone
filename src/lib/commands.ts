@@ -661,6 +661,21 @@ export const COMMANDS: readonly Command[] = [
       "opponent still waits for the reveal.",
   },
   {
+    id: "duels_mine",
+    label: "My duels",
+    tier: "signed",
+    group: "Stable",
+    method: "GET",
+    path: "/api/duels/mine",
+    price: "signed",
+    cents: 0,
+    signScope: "duels:mine",
+    requiresFlag: "duels",
+    note:
+      "Every duel you host or took, newest first, with the ones still waiting on somebody marked. " +
+      "The pool is anonymous by design, so this is the only read that answers what you are in.",
+  },
+  {
     id: "release",
     label: "Release a fighter",
     tier: "signed",
