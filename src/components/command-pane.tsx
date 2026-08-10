@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import ActionPicker from "./action-picker";
 import CodeBlock from "./code-block";
 import Icon from "./icon";
-import Panel from "./panel";
+import Panel, { type PanelDrag } from "./panel";
 import type { Capability, StakeRange } from "@/lib/capability";
 import { fieldsFor, isCallerPriced, type Command, type Field } from "@/lib/commands";
 import { money } from "@/lib/format";
@@ -76,6 +76,7 @@ export default function CommandPane({
   armedAt,
   onArg,
   onRun,
+  drag,
 }: {
   cmd: Command;
   capability: Capability;
@@ -93,6 +94,8 @@ export default function CommandPane({
   armedAt: number;
   onArg: (name: string, value: string) => void;
   onRun: () => void;
+  /** Handed down by the layout so this card can be moved. */
+  drag?: PanelDrag;
 }) {
   const fields = fieldsFor(cmd);
   const paid = cmd.tier === "paid";
@@ -173,6 +176,7 @@ export default function CommandPane({
 
   return (
     <Panel
+      drag={drag}
       icon="swords"
       title="Command"
       className="pane-command"

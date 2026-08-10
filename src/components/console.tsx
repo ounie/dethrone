@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import ChatPane from "./chat-pane";
+import ConsoleLayout from "./console-layout";
 import CommandPane from "./command-pane";
 import ConfirmDialog, { type ConfirmRequest } from "./confirm-dialog";
 import FightersPane from "./fighters-pane";
@@ -290,62 +291,69 @@ export default function Console({
         onTightened={(cap) => setLive((prev) => ({ ...prev, capCents: cap }))}
       />
 
-      <div className="console">
-        <Rail
-          capabilities={capabilities}
-          activeId={active.id}
-          onSelect={(cmd) => {
-            setActive(cmd);
-            setArgs({});
-          }}
-        />
-
-        <ChatPane
-          agent={agent}
-          capabilities={capabilities}
-          busy={busy}
-          onBusy={setBusy}
-          onLoadCommand={loadCommand}
-          onRunCommand={runCommand}
-          onEnvelope={onAgentEvent}
-        />
-
-        <CommandPane
-          cmd={active}
-          capability={capabilities[active.id] ?? { enabled: true }}
-          args={args}
-          busy={busy}
-          stakeRange={stakeRange}
-          forgeNote={forgeNote}
-          sequenceLength={sequenceLength}
-          armedAt={armedAt}
-          onArg={(name, value) => setArgs((prev) => ({ ...prev, [name]: value }))}
-          onRun={() => void send(active, args)}
-        />
-
-        {/*
-          `loadCommand` is handed over as-is. It already does exactly what
-          arming needs — select a command and fill its fields, running nothing —
-          because that is what an accepted agent proposal does too. The rail's
-          own select cannot be reused: it CLEARS args deliberately, since a
-          stale field left over from the previous command is a wrong request.
-        */}
-        <FightersPane
-          capabilities={capabilities}
-          operator={operator}
-          disabled={busy}
-          sequenceLength={sequenceLength}
-          onArm={loadCommand}
-        />
-
-        <ResponsePane envelope={envelope} />
-
-        <ResponseLog rows={log} />
-
-        <SeatState seat={seat} baseUrl={baseUrl} />
-
-        <StandingPane standing={standing} />
-      </div>
+      <ConsoleLayout
+        rail={
+          <Rail
+            capabilities={capabilities}
+            activeId={active.id}
+            onSelect={(cmd) => {
+              setActive(cmd);
+              setArgs({});
+            }}
+          />
+        }
+        panes={{
+          chat: (drag) => (
+            <ChatPane
+              drag={drag}
+              agent={agent}
+              capabilities={capabilities}
+              busy={busy}
+              onBusy={setBusy}
+              onLoadCommand={loadCommand}
+              onRunCommand={runCommand}
+              onEnvelope={onAgentEvent}
+            />
+          ),
+          command: (drag) => (
+            <CommandPane
+              drag={drag}
+              cmd={active}
+              capability={capabilities[active.id] ?? { enabled: true }}
+              args={args}
+              busy={busy}
+              stakeRange={stakeRange}
+              forgeNote={forgeNote}
+              sequenceLength={sequenceLength}
+              armedAt={armedAt}
+              onArg={(name, value) => setArgs((prev) => ({ ...prev, [name]: value }))}
+              onRun={() => void send(active, args)}
+            />
+          ),
+          /*
+            `loadCommand` is handed over as-is. It already does exactly what
+            arming needs — select a command and fill its fields, running nothing
+            — because that is what an accepted agent proposal does too. The
+            rail's own select cannot be reused: it CLEARS args deliberately,
+            since a stale field left over from the previous command is a wrong
+            request.
+          */
+          fighters: (drag) => (
+            <FightersPane
+              drag={drag}
+              capabilities={capabilities}
+              operator={operator}
+              disabled={busy}
+              sequenceLength={sequenceLength}
+              onArm={loadCommand}
+            />
+          ),
+          response: (drag) => <ResponsePane envelope={envelope} drag={drag} />,
+          log: (drag) => <ResponseLog rows={log} drag={drag} />,
+          seat: (drag) => <SeatState seat={seat} baseUrl={baseUrl} drag={drag} />,
+          standing: (drag) => <StandingPane standing={standing} drag={drag} />,
+        }}
+      />
 
       {pending && (
         <ConfirmDialog

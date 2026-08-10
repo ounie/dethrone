@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Icon, { type IconName } from "./icon";
-import Panel from "./panel";
+import Panel, { type PanelDrag } from "./panel";
 import Time from "./time";
 import { shortAddress } from "@/lib/format";
 
@@ -79,13 +79,17 @@ function Row({
 export default function SeatState({
   seat,
   baseUrl,
+  drag,
 }: {
   seat: SeatSnapshot;
   /** The arena this console points at. Where a fighter's own page lives. */
   baseUrl: string;
+  /** Handed down by the layout so this card can be moved. */
+  drag?: PanelDrag;
 }) {
   return (
     <Panel
+      drag={drag}
       icon="landmark"
       title="Seat — as of the last read"
       tone="gilt"

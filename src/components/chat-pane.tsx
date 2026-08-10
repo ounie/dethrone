@@ -6,7 +6,7 @@ import AutonomyLockedDialog from "./autonomy-locked-dialog";
 import ChatTranscript from "./chat-transcript";
 import Icon from "./icon";
 import ModelPicker from "./model-picker";
-import Panel from "./panel";
+import Panel, { type PanelDrag } from "./panel";
 import type { AgentConfig, AutonomyChallenge, ChatEventWire, ProviderId, Turn } from "@/lib/agent";
 import type { Capabilities } from "@/lib/capability";
 import { logTime } from "@/lib/format";
@@ -43,6 +43,7 @@ export default function ChatPane({
   onLoadCommand,
   onRunCommand,
   onEnvelope,
+  drag,
 }: {
   agent: AgentConfig;
   capabilities: Capabilities;
@@ -53,6 +54,8 @@ export default function ChatPane({
   onRunCommand: (commandId: string, args: Record<string, string>) => void;
   /** A tool result, handed to the panes that already render envelopes. */
   onEnvelope: (event: ChatEventWire) => void;
+  /** Handed down by the layout so this card can be moved. */
+  drag?: PanelDrag;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
@@ -202,6 +205,7 @@ export default function ChatPane({
   return (
     <>
       <Panel
+      drag={drag}
         icon="message-square"
         title="Agent"
         className="pane-chat"

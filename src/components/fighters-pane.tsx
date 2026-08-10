@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Dialog from "./dialog";
 import Icon from "./icon";
-import Panel from "./panel";
+import Panel, { type PanelDrag } from "./panel";
 import Time from "./time";
 import SequenceBuilder, { type MenuAction } from "./sequence-builder";
 import type { Capabilities } from "@/lib/capability";
@@ -139,6 +139,7 @@ export default function FightersPane({
   disabled,
   sequenceLength,
   onArm,
+  drag,
 }: {
   capabilities: Capabilities;
   /**
@@ -158,6 +159,8 @@ export default function FightersPane({
   sequenceLength: number | null;
   /** Select a catalogue command and fill its fields. Runs nothing. */
   onArm: (commandId: string, args: Record<string, string>) => void;
+  /** Handed down by the layout so this card can be moved. */
+  drag?: PanelDrag;
 }) {
   const [roster, setRoster] = useState<StableFighter[] | null>(null);
   const [rosterError, setRosterError] = useState<string | null>(null);
@@ -500,6 +503,7 @@ export default function FightersPane({
 
   return (
     <Panel
+      drag={drag}
       icon="swords"
       title="Fighters"
       className="pane-fighters"

@@ -1,6 +1,6 @@
 "use client";
 
-import Panel from "./panel";
+import Panel, { type PanelDrag } from "./panel";
 import { money } from "@/lib/format";
 
 /**
@@ -30,9 +30,17 @@ export interface LogRow {
   ms: number | null;
 }
 
-export default function ResponseLog({ rows }: { rows: LogRow[] }) {
+export default function ResponseLog({
+  rows,
+  drag,
+}: {
+  rows: LogRow[];
+  /** Handed down by the layout so this card can be moved. */
+  drag?: PanelDrag;
+}) {
   return (
-    <Panel icon="scroll-text" title="Response log" className="pane-log">
+    <Panel
+      drag={drag} icon="scroll-text" title="Response log" className="pane-log">
       {rows.length === 0 ? (
         <div className="pane-body empty small">
           <p className="muted">Nothing run yet this sitting.</p>
