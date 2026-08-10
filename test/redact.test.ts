@@ -34,6 +34,26 @@ describe("the redactor", () => {
     expect(input.signature).toBe(FIXTURE_SIGNATURE);
   });
 
+  it("erases every secret in the list, not just the first", () => {
+    // The signature was always `secrets: string[]`, and for years the callers
+    // passed exactly one. They now pass every configured wallet key plus the
+    // provider credentials, so the plural path is load-bearing rather than
+    // theoretical.
+    const SECOND = "0x" + "e".repeat(64);
+    const THIRD = "sk-ant-" + "z".repeat(24);
+    const json = JSON.stringify(
+      redact({ a: FIXTURE_KEY, b: SECOND, c: THIRD, keep: "0x1234" }, [
+        FIXTURE_KEY,
+        SECOND,
+        THIRD,
+      ]),
+    );
+    expect(json).not.toContain(FIXTURE_KEY);
+    expect(json).not.toContain(SECOND);
+    expect(json).not.toContain(THIRD);
+    expect(json).toContain("0x1234");
+  });
+
   it("erases a secret it was given even in an unrecognised shape", () => {
     const json = JSON.stringify(redact({ anything: `prefix${FIXTURE_KEY}suffix` }, [FIXTURE_KEY]));
     expect(json).not.toContain(FIXTURE_KEY);

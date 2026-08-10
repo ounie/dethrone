@@ -3,7 +3,9 @@
 import Image from "next/image";
 import { useState } from "react";
 import Icon from "./icon";
+import WalletPicker from "./wallet-picker";
 import { money, pct } from "@/lib/format";
+import type { WalletChoice } from "@/lib/operator";
 
 /**
  * The masthead: who this console is pointed at, who it signs as, and what it
@@ -63,12 +65,16 @@ export interface Ceiling {
 }
 
 export interface Wallet {
-  /** The address `DETHRONE_PRIVATE_KEY` derives to. Public; the key is not. */
+  /** The address the SELECTED key derives to. Public; the key is not. */
   address: string;
   /** Formatted USDC, or null when the RPC could not be reached. */
   usdc: string | null;
   network: string;
   explorerUrl: string;
+  /** Every wallet this deploy holds a key for. One entry ⇒ no picker at all. */
+  choices: readonly WalletChoice[];
+  /** Which of `choices` is signing. Server-held; the client cannot set it. */
+  selectedId: string;
 }
 
 /**
@@ -83,8 +89,16 @@ export interface Wallet {
  * The address is derived from the key at boot and is public. **The key itself
  * never crosses this boundary** — this component receives a string somebody
  * else computed and has no way to ask for anything more.
+ *
+ * With several keys configured a picker sits between the label and the hex, and
+ * that changes nothing about the paragraph above. The browser is handed a list
+ * of labels and addresses and a POST that moves a pointer on the server; which
+ * wallet signs is never a field on the request that spends. See
+ * `app/api/wallet/route.ts` for why that separation is the whole design.
  */
 function WalletCard({ wallet, house }: { wallet: Wallet; house: House | null }) {
+  const selected = wallet.choices.find((c) => c.id === wallet.selectedId);
+
   return (
     <div className="wallet">
       {/*
@@ -99,8 +113,18 @@ function WalletCard({ wallet, house }: { wallet: Wallet; house: House | null }) 
       {house && <HouseMark house={house} />}
       <div className="wallet-head">
         <span className="chip-label">Operator wallet</span>
-        <span className="wallet-derived">derived from DETHRONE_PRIVATE_KEY</span>
+        {/*
+          The variable NAME, not a fixed string. This used to read "derived from
+          DETHRONE_PRIVATE_KEY", which is a claim, and with a second wallet
+          selected it is a false one — the operator would be told the wrong line
+          of their own `.env.local`. A name in the client bundle is fine and is
+          not new; `scripts/scan-bundle.ts` scans for key-SHAPED values for
+          exactly that reason.
+        */}
+        <span className="wallet-derived">derived from {selected?.envVar ?? "your key"}</span>
       </div>
+
+      <WalletPicker choices={wallet.choices} selectedId={wallet.selectedId} />
 
       <div className="wallet-address">
         <span className="num" title={wallet.address}>

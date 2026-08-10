@@ -9,7 +9,7 @@ import { config } from "@/lib/config";
 import { capabilities } from "@/lib/registry";
 import { rules } from "@/lib/rules";
 import { spendStore } from "@/lib/spend";
-import { address, hasWallet } from "@/lib/wallet";
+import { address, hasWallet, selectedWalletId, wallets } from "@/lib/wallet";
 
 /**
  * The one server component.
@@ -78,6 +78,7 @@ export default async function Page() {
 
   const me = address();
   const keyed = hasWallet();
+  const allWallets = wallets();
 
   /*
     The operator's House.
@@ -130,7 +131,7 @@ export default async function Page() {
     },
   };
 
-  const ledger = await spendStore(me).read();
+  const ledger = await spendStore().read();
 
   // A read of the chain, not of the canon: one `view` call, no key, no
   // signature. `null` when the RPC is unreachable — the console keeps working.
@@ -160,6 +161,12 @@ export default async function Page() {
                 usdc: balance?.usdc ?? null,
                 network: balance?.network ?? networkKey(),
                 explorerUrl: explorerAddressUrl(me),
+                // Labels and addresses. No key, and no means of asking for one:
+                // `wallets()` maps the private entries down to descriptors and
+                // `lib/operator.ts` holds the type so no component ever has an
+                // import edge to the module that built them.
+                choices: allWallets,
+                selectedId: selectedWalletId() ?? "",
               }
             : null
         }
@@ -178,10 +185,11 @@ export default async function Page() {
               endpoint the reader cannot call, as their receipt, is worse than
               naming none: it reads as an audit trail right up until the 401.
             */}
-            The ceiling is a seatbelt in this app&rsquo;s own process — it bounds one sitting and
-            protects against a stray click. It is not escrow, and it does not protect a host you do
-            not control. It is not a record either: what this wallet actually spent is on-chain, and
-            every match the arena settles is public on its own pages.
+            The ceiling is a seatbelt in this app&rsquo;s own process — it bounds one sitting,
+            across every wallet you have configured, and protects against a stray click. It is not
+            escrow, and it does not protect a host you do not control. It is not a record either:
+            what these wallets actually spent is on-chain, and every match the arena settles is
+            public on its own pages.
           </>
         ) : (
           <>

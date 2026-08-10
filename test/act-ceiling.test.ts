@@ -290,6 +290,9 @@ describe("refusals that never reach the network", () => {
 
   it("a paid command with no key", async () => {
     delete process.env.DETHRONE_PRIVATE_KEY;
+    // "No key" means no key, not "no primary". A leftover `_*` variable would
+    // make this case pass for the wrong reason once one exists in this file.
+    delete process.env.DETHRONE_PRIVATE_KEY_SCRAPYARD;
     vi.resetModules();
     const res = await post({ id: "forge" });
     expect(res.body.error).toMatchObject({ code: "CONSOLE_NO_WALLET" });
@@ -393,6 +396,23 @@ describe("the envelope", () => {
     call.mockResolvedValue(ok({ echo: KEY }));
     const res = await post({ id: "forge" });
     expect(JSON.stringify(res.body)).not.toContain(KEY);
+  });
+
+  it("never contains a SECOND configured key either", async () => {
+    // The case above passed for years while the redaction list was one
+    // hard-coded variable. It would have kept passing after a second key became
+    // configurable, and a key from any wallet but the primary would have
+    // shipped to the browser. The list is derived now; this is what proves it.
+    const OTHER = "0x" + "e".repeat(64);
+    process.env.DETHRONE_PRIVATE_KEY_SCRAPYARD = OTHER;
+    vi.resetModules();
+    try {
+      call.mockResolvedValue(ok({ echo: OTHER }));
+      const res = await post({ id: "forge" });
+      expect(JSON.stringify(res.body)).not.toContain(OTHER);
+    } finally {
+      delete process.env.DETHRONE_PRIVATE_KEY_SCRAPYARD;
+    }
   });
 });
 

@@ -508,6 +508,33 @@ code {
   color: var(--parchment-600);
 }
 
+/* The wallet switcher, when more than one key is configured — between the label
+   and the hex, so the address always reads as the answer to the dropdown.
+   `min-width: 0` on both is load-bearing: the masthead's wallet track is
+   `minmax(300px, 1fr)`, and a select without it widens the track rather than
+   shrinking, which pushes the ceiling meter off the row at 1500px. Chrome comes
+   from the shared `.field input, .field select` rules rather than a fifth
+   opinion about what a focused input looks like. */
+.wallet-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  min-width: 0;
+}
+
+.wallet-select {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wallet-picker-reason {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
 .wallet-address {
   display: flex;
   align-items: center;
@@ -811,6 +838,49 @@ code {
 .pane-command {
   grid-area: command;
 }
+
+/* "This card just changed."
+ *
+ * Set for ~1.4s by `command-pane.tsx` whenever something ELSEWHERE filled this
+ * pane — the Fighters panel's arm buttons, an agent proposal loaded for
+ * editing. Without it, pressing Forge across the page rewrote this card
+ * silently and read as a button that did nothing.
+ *
+ * GOLD, and never ember. Ember means "this settles an amount now" and belongs
+ * to exactly one element on the screen; a card that glowed ember because it had
+ * been FILLED would say the money had moved. Gold is the frame material — it
+ * marks a thing worth looking at and claims nothing about cost.
+ *
+ * The ring is applied statically and the animation only fades it out, which is
+ * what makes this survive `prefers-reduced-motion`: the global reset at the
+ * foot of this file kills the animation, the ring simply stays for its 1.4s and
+ * then goes when the attribute does. A cue that vanishes entirely for the
+ * people most likely to need it is not an accessible cue. */
+.pane-command[data-armed] {
+  box-shadow:
+    0 0 0 1px var(--gold-400),
+    0 0 22px -8px var(--gold-500),
+    var(--bevel-stone),
+    var(--shadow-panel);
+  animation: armed-flash 1400ms var(--ease) forwards;
+}
+
+@keyframes armed-flash {
+  from {
+    box-shadow:
+      0 0 0 2px var(--gold-300),
+      0 0 26px -4px var(--gold-400),
+      var(--bevel-stone),
+      var(--shadow-panel);
+  }
+  to {
+    box-shadow:
+      0 0 0 0 transparent,
+      0 0 0 0 transparent,
+      var(--bevel-stone),
+      var(--shadow-panel);
+  }
+}
 .pane-response {
   grid-area: response;
 }
@@ -1109,7 +1179,8 @@ code {
 }
 
 .field input,
-.field select {
+.field select,
+.wallet-select {
   width: 100%;
   min-height: 38px;
   padding: 8px 10px;
@@ -1123,17 +1194,20 @@ code {
 }
 
 .field input:hover:not(:disabled),
-.field select:hover:not(:disabled) {
+.field select:hover:not(:disabled),
+.wallet-select:hover:not(:disabled) {
   border-color: var(--ink-500);
 }
 
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.wallet-select:focus {
   border-color: var(--border-ember);
 }
 
 .field input:disabled,
-.field select:disabled {
+.field select:disabled,
+.wallet-select:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -1605,6 +1679,107 @@ code {
   margin-bottom: var(--s3);
 }
 
+/* The portrait is a control, so it is a button — but it must not LOOK like one.
+   The frame, the size and the crop all still belong to the image; this strips
+   the button chrome and adds only the affordance: a cursor, a gilt lift on
+   hover, and a small corner glyph saying it opens. */
+.fighter-portrait-btn {
+  position: relative;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 0;
+  cursor: zoom-in;
+  border-radius: var(--radius-xs);
+}
+
+.fighter-portrait-btn:hover .fighter-portrait,
+.fighter-portrait-btn:focus-visible .fighter-portrait {
+  border-color: var(--gold-400);
+}
+
+.fighter-portrait-btn:focus-visible {
+  outline: 2px solid var(--border-gilt);
+  outline-offset: 2px;
+}
+
+/* Only on hover and focus: a permanent badge would read as part of the
+   portrait, and the portrait is the fighter. */
+.fighter-portrait-zoom {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--bg-panel) 82%, transparent);
+  color: var(--gold-300);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.fighter-portrait-btn:hover .fighter-portrait-zoom,
+.fighter-portrait-btn:focus-visible .fighter-portrait-zoom {
+  opacity: 1;
+}
+
+/* The viewer. Wider than `.confirm`, which is sized for a question — this holds
+   a portrait, and the whole point is that it is bigger than the thumbnail.
+   Bounded by the VIEWPORT rather than by a fixed size, so a tall portrait on a
+   short window scrolls nothing and simply fits. */
+.portrait-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.portrait-view-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.portrait-view-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.portrait-view-img {
+  display: block;
+  max-width: 100%;
+  max-height: min(72vh, 900px);
+  margin: 0 auto;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-gilt);
+  background: var(--bg-panel-flat);
+  object-fit: contain;
+}
+
+.portrait-view-foot {
+  margin: 0;
+  font-size: 11px;
+}
+
+/* There is no global `a` rule in this file — every link so far has been an
+   `.icon-btn` — so an unstyled anchor here rendered in the browser's own blue
+   and then its purple. On a screen whose whole argument rests on colour meaning
+   something, a stray cool hue is worse than a plain one. Teal: this opens the
+   arena's public object and nothing is at stake. */
+.portrait-view-foot a {
+  color: var(--teal-400);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--teal-400) 40%, transparent);
+}
+
+.portrait-view-foot a:hover {
+  border-bottom-color: var(--teal-400);
+}
+
 .fighter-portrait {
   flex-shrink: 0;
   width: 72px;
@@ -1741,6 +1916,16 @@ code {
 
 .arm-label {
   font-size: 11px;
+}
+
+/* The empty Stable, and the one thing to do about it. No hairline and no top
+   border: `.arm-row` earns those by sitting under a fighter's detail, and here
+   there is nothing above to be separated from. */
+.roster-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
 }
 
 .watch-box {
@@ -2375,6 +2560,12 @@ code {
   border-radius: var(--radius-md);
   background: var(--bg-panel);
   box-shadow: var(--bevel-stone), var(--glow-gilt), var(--shadow-panel);
+}
+
+/* The viewer borrows the shell and not its width: `.confirm` is measured for a
+   sentence and a pair of buttons. */
+.confirm:has(.portrait-view) {
+  width: min(720px, 100%);
 }
 
 .confirm h2 {

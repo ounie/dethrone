@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { walletKeyVars } from "@/lib/assertions";
 import { autonomyStore } from "@/lib/chat/autonomy";
 import { makeExecutor } from "@/lib/chat/execute";
 import { systemPrompt } from "@/lib/chat/prompt";
@@ -112,19 +113,30 @@ function fail(code: ConsoleErrorCode, detail?: Record<string, unknown>): NextRes
   return NextResponse.json(body, { status });
 }
 
-/** Every provider key this process holds, for the second redaction pass. */
+/**
+ * Every secret this process holds, for the second redaction pass.
+ *
+ * The wallet half is resolved from `walletKeyVars` rather than named literally,
+ * for the reason `/api/act` states at its own copy of this: naming the primary
+ * variable by hand silently stopped being the whole list the moment a second
+ * key became configurable, and this is the egress that matters most — a tool
+ * result goes to a third-party model provider.
+ *
+ * The values are still read here rather than handed over by `wallet.ts`, which
+ * has no `getPrivateKey()` and no plural of one. Only the NAMES are shared.
+ */
 function providerSecrets(): string[] {
   return [
     process.env.OPENROUTER_API_KEY,
     process.env.ANTHROPIC_API_KEY,
     process.env.OPENAI_COMPATIBLE_API_KEY,
-    process.env.DETHRONE_PRIVATE_KEY,
+    ...walletKeyVars(process.env).map((v) => process.env[v.name]),
   ].filter((v): v is string => typeof v === "string" && v.trim().length >= 8);
 }
 
-async function ceilingBlock(operator: string | null) {
+async function ceilingBlock() {
   const cfg = config();
-  const store = spendStore(operator);
+  const store = spendStore();
   const ledger = await store.read();
   return store.enabled
     ? {
@@ -174,7 +186,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         active: autonomy.mode() === "full",
         perActionCapCents: autonomy.offerable ? cfg.autonomyMaxCents : null,
       },
-      ceiling: await ceilingBlock(operator),
+      ceiling: await ceilingBlock(),
     });
   }
 
@@ -194,7 +206,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       return fail("CONSOLE_AUTONOMY_UNAVAILABLE", { reason: autonomy.reason });
     }
 
-    const capCents = await spendStore(operator).cap();
+    const capCents = await spendStore().cap();
 
     if (!parsed.data.confirm) {
       const challenge = autonomy.challenge(capCents);
@@ -255,7 +267,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           network: cfg.network,
           operator,
           mode,
-          ceiling: await ceilingBlock(operator).then((c) =>
+          ceiling: await ceilingBlock().then((c) =>
             c.enabled ? { enabled: true, spentCents: c.spentCents, capCents: c.cap } : null,
           ),
           perActionCapCents: mode === "full" ? cfg.autonomyMaxCents : null,
@@ -289,7 +301,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         events,
         mode: autonomy.mode(),
         autonomy: { active: autonomy.mode() === "full" },
-        ceiling: await ceilingBlock(operator),
+        ceiling: await ceilingBlock(),
       },
       providerSecrets(),
     ),

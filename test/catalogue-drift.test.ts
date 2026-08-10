@@ -100,6 +100,43 @@ describe("the catalogue is internally consistent", () => {
   });
 });
 
+/**
+ * Every command says what it does, in the Command pane, before it is pressed.
+ *
+ * Twenty-three of fifty-one carried no `note` at all, so the pane rendered a
+ * route and a price and nothing else — and a route is not a description to
+ * anyone who has not read the arena's source. The catalogue is the only place
+ * this console is allowed to keep that sentence, so this is where it is
+ * checked.
+ *
+ * The notes describe the ENDPOINT, never the rules. "Returns every open heir
+ * listing" is this console's business; what makes an heir listable is the
+ * arena's, and a note that drifted into eligibility or timing would be the
+ * second implementation of the game that `CLAUDE.md`'s first rule forbids.
+ * That half cannot be tested — it is a reading — so the cheap half is tested
+ * here and the expensive half is written down.
+ */
+describe("every command carries a description", () => {
+  it("has a note", () => {
+    const silent = COMMANDS.filter((c) => !c.note?.trim()).map((c) => c.id);
+    expect(silent, `no note: ${silent.join(", ")}`).toEqual([]);
+  });
+
+  it("says more than the route already says", () => {
+    // A note that just restates the path is a note nobody needed. Short enough
+    // to be a label rather than a sentence is the signal.
+    const thin = COMMANDS.filter((c) => (c.note ?? "").trim().length < 25).map((c) => c.id);
+    expect(thin, `too thin to be a description: ${thin.join(", ")}`).toEqual([]);
+  });
+
+  it("quotes no price, which is the arena's to publish", () => {
+    // Same rule `currency-literals` enforces on the app and the components,
+    // applied by hand here because this is the one file exempt from it.
+    const priced = COMMANDS.filter((c) => /\$\s*\d|\b\d+\s*(cents|usdc)\b/i.test(c.note ?? ""));
+    expect(priced.map((c) => c.id), "a note names an amount").toEqual([]);
+  });
+});
+
 describe("the catalogue matches the arena — direction A: nothing invented", () => {
   for (const cmd of COMMANDS) {
     it(`${cmd.id} → ${cmd.method} ${cmd.path} exists on the canon`, () => {

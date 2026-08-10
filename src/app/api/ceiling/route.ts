@@ -3,7 +3,6 @@ import { z } from "zod";
 import { config } from "@/lib/config";
 import { consoleError } from "@/lib/errors";
 import { spendStore } from "@/lib/spend";
-import { address } from "@/lib/wallet";
 
 /**
  * Tighten the ceiling for this sitting.
@@ -21,6 +20,10 @@ import { address } from "@/lib/wallet";
  * path, with its properties asserted rather than assumed.
  * `test/ceiling-route.test.ts` pins them — it only ever lowers, it never
  * reaches the arena, and it cannot re-enable a ceiling that is disabled.
+ *
+ * Since the ceiling became sitting-wide rather than per-address, this route
+ * imports nothing from `wallet.ts` at all. It was already unable to spend; now
+ * it cannot even see who would.
  *
  * ## One-way, by construction
  *
@@ -53,7 +56,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json(body, { status });
   }
 
-  const store = spendStore(address());
+  const store = spendStore();
 
   if (!store.enabled) {
     // Offering a control that cannot bind would be the same lie the disabled

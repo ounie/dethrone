@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import Dialog from "./dialog";
 import Icon from "./icon";
 import Panel from "./panel";
 import SequenceBuilder, { type MenuAction } from "./sequence-builder";
@@ -39,8 +40,9 @@ import { stamp } from "@/lib/format";
  * mean exactly one thing, and a second place to spend would be a second answer
  * to "what is about to cost me money".
  *
- * The one request this panel makes on its own is `submit_actions`, which the
- * catalogue prices at zero and which the arena accepts on a signature.
+ * The two requests this panel makes on its own are `submit_actions` and
+ * `set_preset`, both of which the catalogue prices at zero and the arena
+ * accepts on a signature.
  *
  * ## Why it holds a plan at all
  *
@@ -132,11 +134,20 @@ function bodyOf(data: Record<string, unknown>): Record<string, unknown> | undefi
 
 export default function FightersPane({
   capabilities,
+  operator,
   disabled,
   sequenceLength,
   onArm,
 }: {
   capabilities: Capabilities;
+  /**
+   * The address currently signing, or null on a read-only deploy.
+   *
+   * Not rendered anywhere in this panel — it is here because **everything below
+   * belongs to one wallet**, and this is how the panel learns that the wallet
+   * changed. See the reset beside the state declarations.
+   */
+  operator: string | null;
   /** True while any other request is in flight. */
   disabled: boolean;
   /**
@@ -162,6 +173,11 @@ export default function FightersPane({
   const [legendOpen, setLegendOpen] = useState(false);
   const [comboName, setComboName] = useState("");
   const [comboNote, setComboNote] = useState<string | null>(null);
+  /** The portrait viewer. Memory only, and it holds no URL of its own. */
+  const [viewing, setViewing] = useState(false);
+  /** Focused when the viewer opens: the safe choice, and here the only one. */
+  const closeViewerRef = useRef<HTMLButtonElement>(null);
+  const [presetNote, setPresetNote] = useState<string | null>(null);
 
   /*
     Combos live in `localStorage`, which is an external store, so they are read
@@ -171,6 +187,55 @@ export default function FightersPane({
     markup on the client that does not match the markup from the server.
   */
   const combos = useSyncExternalStore(subscribeCombos, combosSnapshot, serverCombosSnapshot);
+
+  /*
+    A Stable belongs to one wallet, and so does everything downstream of it.
+
+    `router.refresh()` re-renders the server tree and deliberately KEEPS client
+    state, so without this a wallet switch left the previous operator's roster,
+    portrait, menu, plan and match watch sitting on screen under a masthead
+    naming somebody else. Every one of them is wrong in a different way:
+
+      * The ROSTER is a signed, owner-only read. It is the one thing on this
+        screen that is nobody else's business, and it would be showing while the
+        console could no longer produce the signature that fetched it.
+      * The PLAN is the dangerous one. `combos.ts` already argues this at
+        length: a plan is a list of MENU INDICES, and indices are positions in
+        one fighter's menu. Carrying five of them to a fighter another wallet
+        owns submits five legal integers naming five different moves — a
+        submission the operator did not write and cannot tell apart from one
+        they did.
+      * The WATCH is a match the previous wallet is in. `submit_actions` signs
+        as whoever is selected now, so the arena would refuse it — a confusing
+        401 rather than a wrong move, but still a panel offering an action it
+        knows cannot work.
+
+    Adjusted during render rather than in an effect, for the reason
+    `console.tsx` gives beside its own: an effect would paint the stale panel
+    once and then blank it.
+
+    Combos are deliberately NOT cleared. They live in `localStorage`, store
+    stable action ids rather than indices, and are the operator's own vocabulary
+    — not a fact about a wallet.
+  */
+  const [signedAs, setSignedAs] = useState(operator);
+  if (operator !== signedAs) {
+    setSignedAs(operator);
+    setRoster(null);
+    setRosterError(null);
+    setSelected(null);
+    setName(null);
+    setImageUrl(null);
+    setMenu(null);
+    setMenuError(null);
+    setPicks([]);
+    setWatch(null);
+    setSubmitNote(null);
+    setMatchIdField("");
+    setComboNote(null);
+    setPresetNote(null);
+    setViewing(false);
+  }
 
   const stable = capabilities.stable ?? { enabled: true };
   const chosen = roster?.find((f) => f.characterId === selected) ?? null;
@@ -259,9 +324,15 @@ export default function FightersPane({
     setSelected(characterId);
     setName(null);
     setImageUrl(null);
+    // A viewer left open across a change of fighter would go on showing the
+    // previous portrait under the new fighter's name until the reads land.
+    setViewing(false);
     setMenu(null);
     setMenuError(null);
     setPicks([]);
+    // A preset note names the PREVIOUS fighter's write; carrying it across a
+    // selection would read as a fact about this one.
+    setPresetNote(null);
     setBusy(true);
     const id = String(characterId);
     try {
@@ -309,20 +380,27 @@ export default function FightersPane({
     front of you as soon as you claimed one. `list[0]` is the fallback only when
     the arena reports no prime at all.
 
-    Once per mount, via a ref rather than a state flag: a re-run would re-select
-    the prime and silently discard a plan the operator had already built.
+    Once per WALLET, via a ref rather than a state flag: a re-run for the same
+    operator would re-select the prime and silently discard a plan they had
+    already built.
+
+    Per wallet and not per mount, because the panel outlives a switch — the
+    reset above empties it, and this fills it again with the Stable that belongs
+    to whoever is signing now. Reading it for them is the same "the read they
+    would make first, made before they ask" that justifies doing it on open, and
+    it costs the same nothing: `stable` is signed and free.
   */
-  const autoOpened = useRef(false);
+  const openedFor = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (autoOpened.current || !stable.enabled) return;
-    autoOpened.current = true;
+    if (!stable.enabled || openedFor.current === operator) return;
+    openedFor.current = operator;
     void (async () => {
       const list = await loadRoster();
       if (!list || list.length === 0) return;
       const prime = list.find((f) => f.generation === 0) ?? list[0];
       await choose(prime.characterId);
     })();
-  }, [stable.enabled, loadRoster, choose]);
+  }, [operator, stable.enabled, loadRoster, choose]);
 
   // ── The window watch ──────────────────────────────────────────────────────
   //
@@ -384,6 +462,39 @@ export default function FightersPane({
     }
   }, [watch, picks, readWindow]);
 
+  /**
+   * PATCH the plan onto the fighter as its standing preset.
+   *
+   * Free and signed, the `submit_actions` precedent — the second of the two
+   * requests this panel is allowed to make on its own. The plan above stays
+   * memory-only and dies with the tab; what this stores lives with the FIGHTER,
+   * on the arena, sealed, and is what a window close commits if no live
+   * submission arrives. Running it again replaces the previous preset — the
+   * close reads the latest value, which is exactly the arena's revision path.
+   *
+   * The response is rendered as the arena's own words (`presetActionIds` echoed
+   * back, or its refusal code) — never a sentence invented here.
+   */
+  const setPreset = useCallback(async () => {
+    if (!chosen || picks.length === 0) return;
+    setBusy(true);
+    setPresetNote(null);
+    try {
+      const data = await act("set_preset", {
+        id: String(chosen.characterId),
+        presetActionIds: JSON.stringify(picks),
+      });
+      const body = bodyOf(data) as { presetActionIds?: number[] | null } | undefined;
+      setPresetNote(
+        Array.isArray(body?.presetActionIds)
+          ? `preset set · ${body.presetActionIds.length} actions`
+          : codeOf(data, "REFUSED"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [chosen, picks]);
+
   const idle = busy || disabled;
 
   return (
@@ -419,8 +530,42 @@ export default function FightersPane({
           </p>
         )}
 
+        {/*
+          An empty Stable is the one state this panel can answer directly, and
+          until now it only described the answer. The sentence is the same; the
+          button beside it saves reading the catalogue to find out that the
+          command is called "Forge".
+
+          It ARMS, exactly like the three buttons under a chosen fighter, and
+          for the identical reason — forge is paid, so a button here that called
+          `act("forge")` would be a second place money leaves this screen.
+          `onArm` selects the catalogue command and fills its fields; the
+          operator still presses Run, still earns the 428, and still confirms
+          the amount the server computed. `test/fighters-pane.test.ts` fails on
+          the other version, and that is the mechanism rather than this comment.
+
+          No arguments: a forge takes none. The fighter is a pure function of
+          the wallet address, which is what the sentence beside it means and why
+          "your wallet already contains it" is literally true rather than
+          encouraging.
+        */}
         {roster?.length === 0 && (
-          <p className="muted">No fighters. Forge one — your wallet already contains it.</p>
+          <div className="roster-empty">
+            <p className="muted">No fighters. Forge one — your wallet already contains it.</p>
+            <button
+              type="button"
+              className="icon-btn labelled"
+              disabled={idle || !(capabilities.forge?.enabled ?? true)}
+              onClick={() => onArm("forge", {})}
+            >
+              <Icon name="wallet" size={13} />
+              Forge
+            </button>
+            {/* The server's sentence, never one invented here. */}
+            {capabilities.forge?.enabled === false && (
+              <p className="muted">{capabilities.forge.reason}</p>
+            )}
+          </div>
         )}
 
         {roster && roster.length > 0 && (
@@ -500,19 +645,68 @@ export default function FightersPane({
         {chosen && (
           <div className="fighter-detail">
             <div className="fighter-head">
+              {/*
+                A button, not an image with an onClick.
+
+                The portrait is the one thing on this panel worth looking at
+                closely — it is the fighter — and the card renders it at
+                thumbnail size. Wrapping it in a real `<button>` is what makes
+                it reachable by keyboard and announced as something that can be
+                pressed; a click handler on the `<img>` would look identical and
+                be invisible to anybody not using a mouse.
+
+                It opens a viewer and nothing else. No fetch, no second copy of
+                the image, no download — the modal points at the same remote URL
+                the thumbnail already has, so this costs one cache hit and this
+                process never touches the bytes.
+              */}
               {imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  className="fighter-portrait"
-                  src={imageUrl}
-                  alt={name ? `${name}, character ${chosen.characterId}` : ""}
-                />
+                <button
+                  type="button"
+                  className="fighter-portrait-btn"
+                  onClick={() => setViewing(true)}
+                  aria-label={
+                    name ? `View the portrait of ${name} in full` : "View this portrait in full"
+                  }
+                  title="View in full"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    className="fighter-portrait"
+                    src={imageUrl}
+                    alt={name ? `${name}, character ${chosen.characterId}` : ""}
+                  />
+                  <span className="fighter-portrait-zoom" aria-hidden="true">
+                    <Icon name="external-link" size={13} />
+                  </span>
+                </button>
               ) : null}
               <div>
                 <div className="fighter-name">{name ?? `Character ${chosen.characterId}`}</div>
+                {/*
+                  "forged in", not a bare arena name.
+
+                  This field is PROVENANCE — the arena the cycle was running in
+                  when the portrait was rendered — and it is not the fighter's
+                  allegiance. Allegiance is its House, which the masthead shows,
+                  and the two are different facts about different things: a
+                  House falls out of the wallet address, an arena out of the
+                  clock. They routinely disagree, and neither is wrong when they
+                  do.
+
+                  Unlabelled, sitting between the state and the reason, it read
+                  as "belongs to" — and an operator whose masthead said House
+                  Cindermark while this line said The Gladiator Sands had no way
+                  to tell which one was lying. Neither was. The arena's own
+                  guide legislates the same distinction for its roster pages: a
+                  roster is membership, never provenance.
+
+                  Two words, and the ambiguity is gone. Removing the field
+                  instead would delete a true fact to avoid explaining it.
+                */}
                 <div className="num muted fighter-sub">
                   #{chosen.characterId} · {chosen.state}
-                  {chosen.arena ? ` · ${chosen.arena.displayName}` : ""}
+                  {chosen.arena ? ` · forged in ${chosen.arena.displayName}` : ""}
                   {chosen.reason ? ` · ${chosen.reason}` : ""}
                 </div>
               </div>
@@ -589,6 +783,41 @@ export default function FightersPane({
               {sequenceLength === null
                 ? "The arena decides how many a sequence takes and refuses the rest."
                 : "“Draw at random” is a shortcut in your browser, not the arena's fill: a slot you leave empty is dealt from the match id and recorded, and nothing here can predict it."}
+            </p>
+
+            {/* ── The standing preset ──────────────────────────────────────── */}
+            <div className="picker-row">
+              <button
+                type="button"
+                className="icon-btn"
+                disabled={
+                  idle ||
+                  picks.length === 0 ||
+                  (sequenceLength !== null && picks.length !== sequenceLength)
+                }
+                /*
+                  The count gate uses the canon's PUBLISHED length, the same
+                  number `SequenceBuilder`'s capacity already renders — not a
+                  rule invented here. With none published the button stays live
+                  and the arena's refusal is the answer.
+                */
+                title={
+                  sequenceLength !== null && picks.length !== sequenceLength
+                    ? `A preset is ${sequenceLength} actions; the plan holds ${picks.length}.`
+                    : "Store this plan on the fighter, arena-side. Free — a signature, no money."
+                }
+                onClick={() => void setPreset()}
+              >
+                <Icon name="shield-check" size={12} />
+                Set as preset
+              </button>
+              {presetNote && <span className="num window-state">{presetNote}</span>}
+            </div>
+            <p className="field-hint">
+              The plan above dies with this tab; a preset lives with the fighter, on the arena,
+              sealed. If a selection window closes and you never submitted, the preset fights in
+              your place — and the close reads the latest value, so setting it again mid-window is
+              how you revise. A live submission still outranks it for that match.
             </p>
 
             {/* ── Saved combos ─────────────────────────────────────────────── */}
@@ -856,13 +1085,78 @@ export default function FightersPane({
                   A challenge that finds the throne empty seats you instead, and answers with no
                   match id — there is no window to wait for, and nothing to submit. Which side you
                   are is decided by the seat, never by this panel, and a submission cannot be
-                  revised.
+                  revised — the preset can, until the close.
                 </p>
               </>
             )}
           </div>
         )}
       </div>
+
+      {/*
+        The portrait, full size.
+
+        ## It shows the image and nothing else
+
+        No traits, no scores, no genome — those are already on the card, and a
+        viewer that started summarising would be a second rendering of a
+        fighter, free to disagree with the first. It is a bigger copy of one
+        `<img>`, its name, and a way out.
+
+        ## The same remote URL, not a copy
+
+        `src` is `imageUrl`, exactly as the thumbnail has it — the arena's own
+        content-addressed storage, fetched by the browser. Downloading the bytes
+        through this process to re-serve them would put the runtime that holds
+        the keys in front of somebody else's object store, which is the argument
+        `response-pane.tsx` already makes about inlining media. The console
+        never composes an asset path either: `portraitUrl` is resolved by the
+        arena.
+
+        ## Reuses `Dialog`, so the trap is not written twice
+
+        Escape, the backdrop click and the focus trap all come from the shared
+        shell. The close button takes `initialFocus` because it is the safe
+        choice, which is that component's stated rule — and here it is also the
+        only choice, since a viewer has nothing consequential in it at all.
+      */}
+      {viewing && imageUrl && chosen && (
+        <Dialog
+          labelledBy="portrait-view-title"
+          onCancel={() => setViewing(false)}
+          initialFocus={closeViewerRef}
+        >
+          <div className="portrait-view">
+            <div className="portrait-view-head">
+              <h2 id="portrait-view-title" className="display">
+                {name ?? `Character ${chosen.characterId}`}
+              </h2>
+              <button
+                type="button"
+                className="icon-btn"
+                ref={closeViewerRef}
+                onClick={() => setViewing(false)}
+              >
+                <Icon name="x-mark" size={13} />
+                Close
+              </button>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className="portrait-view-img"
+              src={imageUrl}
+              alt={name ? `${name}, character ${chosen.characterId}` : ""}
+            />
+            <p className="portrait-view-foot muted">
+              <a href={imageUrl} target="_blank" rel="noreferrer noopener">
+                Open the original
+              </a>
+              {" · "}
+              {chosen.arena ? `forged in ${chosen.arena.displayName}` : "no arena recorded"}
+            </p>
+          </div>
+        </Dialog>
+      )}
     </Panel>
   );
 }

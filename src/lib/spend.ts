@@ -122,7 +122,7 @@ function memoryStore(configured: number): SpendStore {
  * ceiling becomes an outage. `INCRBY` is atomic, so this is the only
  * implementation where the ceiling genuinely holds across isolates.
  *
- * Two TTL'd keys per operator, both a rolling 24h window. Wiping the store
+ * Two TTL'd keys for the sitting, both a rolling 24h window. Wiping the store
  * loses a session counter and a tightening, and nothing else — it is a cache,
  * not a credential vault, and there is no participant token to keep in it.
  */
@@ -203,14 +203,27 @@ function disabledStore(reason: string): SpendStore {
   };
 }
 
-export function spendStore(operator: string | null): SpendStore {
+/**
+ * One key for the whole sitting, and it is deliberately not per-wallet.
+ *
+ * This used to be `console:${operator}` — the address the key derived to — which
+ * was harmless while a console held exactly one key and became a hole the day it
+ * could hold several: selecting a different wallet from the masthead handed you
+ * a fresh, empty counter, so N wallets meant N times the ceiling. A seatbelt you
+ * can unbuckle from a dropdown is not a seatbelt.
+ *
+ * A sitting is one console process, or one deploy's shared store. It is not a
+ * wallet, and the ceiling has always claimed to bound the former.
+ *
+ * The in-memory path never took an operator, so it has always had this property;
+ * this only brings the Redis path back in line with it.
+ */
+const SITTING_KEY = "console:sitting";
+
+export function spendStore(): SpendStore {
   const cfg = config();
   if (cfg.kv) {
-    return redisStore(
-      cfg.maxSpendCents,
-      cfg.kv,
-      `console:${(operator ?? "anon").toLowerCase()}`,
-    );
+    return redisStore(cfg.maxSpendCents, cfg.kv, SITTING_KEY);
   }
   if (!cfg.ceilingEnabled) {
     return disabledStore(cfg.ceilingDisabledReason ?? "The ceiling cannot bound a sitting here.");

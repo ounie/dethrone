@@ -10,12 +10,17 @@
  * The literal string `DETHRONE_PRIVATE_KEY` legitimately appears in the client
  * bundle, inside the sentence *"Read-only mode. Set DETHRONE_PRIVATE_KEY in
  * .env.local and restart to sign or pay."* — a help message that has to name
- * the variable to be useful. Failing on that would train whoever hits it to
- * add an exception, and the next exception would be a real one.
+ * the variable to be useful. The wallet card ships a variable name too, now
+ * that a console can hold several: it prints which line of `.env.local` the
+ * selected wallet came from, and `DETHRONE_PRIVATE_KEY_SCRAPYARD` is exactly as
+ * public as the sentence above. Failing on either would train whoever hits it
+ * to add an exception, and the next exception would be a real one.
  *
  * So this scans for **shapes that can only be secrets**: 32-byte hex values, 65-
  * byte signatures, and the bearer-credential names this product refuses to
- * have. If the key were ever inlined, it would match the first pattern.
+ * have. Any inlined key matches the first pattern whatever variable it came
+ * from — which is why several keys needed no change here, and why adding a list
+ * of variable names would make this weaker rather than stronger.
  *
  * ## The agent's keys are a second shape
  *
