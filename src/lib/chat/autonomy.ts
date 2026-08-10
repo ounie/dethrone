@@ -135,6 +135,19 @@ function liveStore(operator: string, perActionCapCents: number): AutonomyStore {
       s.grant = null;
       return null;
     }
+    // A grant belongs to the address named in the sentence the operator
+    // actually read. Carrying it across a wallet switch would let the agent
+    // sign and pay from a wallet nobody confirmed — the one thing the whole
+    // handshake exists to prevent — and this file used to check only the clock.
+    //
+    // DROPPED, not shadowed. Switching back must not silently re-arm it:
+    // changing which wallet signs is an act, and a grant that survives it is a
+    // confirmation of nothing. Same argument `acknowledgementFor` makes about
+    // recomputing the sentence at verify time rather than remembering it.
+    if (s.grant.operator !== operator) {
+      s.grant = null;
+      return null;
+    }
     return s.grant;
   };
 

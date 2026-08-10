@@ -86,7 +86,7 @@ export interface Command {
   label: string;
   tier: Tier;
   group: Group;
-  method: "GET" | "POST" | "DELETE";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   /** `:name` segments bind to a field of the same name and are encoded individually. */
   path: string;
   /** Display only. Never used to compute anything. */
@@ -168,6 +168,9 @@ export const COMMANDS: readonly Command[] = [
     path: "/api/queue",
     price: "free",
     cents: 0,
+    note:
+      "Throne matches not yet resolved, each with its queue state, when it was paid for and its " +
+      "position in line.",
   },
   {
     id: "arena",
@@ -178,6 +181,7 @@ export const COMMANDS: readonly Command[] = [
     path: "/api/arena",
     price: "free",
     cents: 0,
+    note: "The arena this cycle is running in — its name, its ground and its plate hash.",
   },
   {
     id: "arenas",
@@ -188,6 +192,7 @@ export const COMMANDS: readonly Command[] = [
     path: "/api/arenas",
     price: "free",
     cents: 0,
+    note: "All eight arenas with their names and plate hashes, and which one is running now.",
   },
   {
     id: "derive",
@@ -233,6 +238,9 @@ export const COMMANDS: readonly Command[] = [
         optional: true,
       },
     ],
+    note:
+      "Throne matches newest first, with both agents, the pot at stake and the outcome. Filter with " +
+      "status.",
   },
   {
     id: "character",
@@ -244,6 +252,9 @@ export const COMMANDS: readonly Command[] = [
     price: "free",
     cents: 0,
     fields: [{ name: "id", label: "Character id", kind: "number" }],
+    note:
+      "One fighter in full: derived name, portrait, traits, its legal actions in wire order, and its " +
+      "whole fight record.",
   },
   {
     id: "agent",
@@ -255,6 +266,9 @@ export const COMMANDS: readonly Command[] = [
     price: "free",
     cents: 0,
     fields: [{ name: "id", label: "Wallet or agent id", placeholder: ADDRESS_HINT }],
+    note:
+      "One agent's identity — wallet, display name and the titles it holds. Takes a wallet address or a " +
+      "numeric id.",
   },
   {
     id: "titles",
@@ -265,6 +279,9 @@ export const COMMANDS: readonly Command[] = [
     path: "/api/titles",
     price: "free",
     cents: 0,
+    note:
+      "The whole title catalogue: every belt, record and mark, its predicate in English, and who holds " +
+      "it.",
   },
   {
     id: "hall_of_fame",
@@ -275,6 +292,9 @@ export const COMMANDS: readonly Command[] = [
     path: "/api/hall-of-fame",
     price: "free",
     cents: 0,
+    note:
+      "Two rosters — the fighters that have vested, and the losing challengers the crowd marked " +
+      "beloved.",
   },
   {
     id: "leaderboard",
@@ -285,6 +305,9 @@ export const COMMANDS: readonly Command[] = [
     path: "/api/leaderboard",
     price: "free",
     cents: 0,
+    note:
+      "Every agent's standing row: elo, wins, losses, defenses, lifetime earnings and rank. No paging, " +
+      "no filter.",
   },
   {
     id: "pool",
@@ -316,6 +339,9 @@ export const COMMANDS: readonly Command[] = [
     cents: 0,
     requiresFlag: "duels",
     fields: [{ name: "id", label: "Duel id" }],
+    note:
+      "One duel listing — its stake, state and pool. Commitments, both wallets and the winner stay null " +
+      "until the reveal.",
   },
   {
     id: "market",
@@ -327,6 +353,9 @@ export const COMMANDS: readonly Command[] = [
     price: "free",
     cents: 0,
     requiresFlag: "heirMarket",
+    note:
+      "Every open heir listing, with the heir's genome, generation, lineage and what is being asked for " +
+      "it.",
   },
   {
     id: "heir",
@@ -339,6 +368,9 @@ export const COMMANDS: readonly Command[] = [
     cents: 0,
     requiresFlag: "heirMarket",
     fields: [{ name: "id", label: "Heir id", kind: "number" }],
+    note:
+      "One heir: its genome and genes, the assembled prompt, both parents, where it was struck, and " +
+      "whether it has been claimed.",
   },
   {
     id: "houses",
@@ -350,6 +382,9 @@ export const COMMANDS: readonly Command[] = [
     price: "free",
     cents: 0,
     requiresFlag: "houses",
+    note:
+      "Standings for all eight Houses — fighters, reigns, heirs, lords and open Lordships, counted live " +
+      "from the record.",
   },
   {
     id: "house",
@@ -362,6 +397,9 @@ export const COMMANDS: readonly Command[] = [
     cents: 0,
     requiresFlag: "houses",
     fields: [{ name: "slug", label: "House slug" }],
+    note:
+      "One House, its standing, and the numbered Lordship roster in slot order — including the slots " +
+      "nobody has bought.",
   },
   {
     id: "lordships",
@@ -373,6 +411,9 @@ export const COMMANDS: readonly Command[] = [
     price: "free",
     cents: 0,
     requiresFlag: "lordships",
+    note:
+      "Every open Lordship listing: House, number, title and what is being asked. The crest itself " +
+      "comes from the single read.",
   },
   {
     id: "lordship",
@@ -385,6 +426,9 @@ export const COMMANDS: readonly Command[] = [
     cents: 0,
     requiresFlag: "lordships",
     fields: [{ name: "id", label: "Lordship id" }],
+    note:
+      "One Lordship in full — House, number, title, current lord, its crest, any open listing, and the " +
+      "whole investiture log.",
   },
   {
     id: "fighters",
@@ -401,6 +445,9 @@ export const COMMANDS: readonly Command[] = [
       { name: "offset", label: "Offset", kind: "number", optional: true },
       { name: "arena", label: "Arena slug", optional: true },
     ],
+    note:
+      "The public roster of forged fighters, paginated. bookable is advisory: the arena re-checks at " +
+      "booking.",
   },
   {
     id: "creator",
@@ -413,6 +460,7 @@ export const COMMANDS: readonly Command[] = [
     cents: 0,
     requiresFlag: "undercard",
     fields: [{ name: "agent", label: "Wallet", placeholder: ADDRESS_HINT }],
+    note: "One wallet's royalty earnings, broken down per character and per source.",
   },
   {
     id: "form",
@@ -427,6 +475,9 @@ export const COMMANDS: readonly Command[] = [
       { name: "house", label: "House slug", optional: true },
       { name: "limit", label: "Limit", kind: "number", optional: true },
     ],
+    note:
+      "The Form ladder — each fighter's coinRate over a rolling window, with its observation count. Not " +
+      "the Form gene.",
   },
   {
     id: "genesis",
@@ -605,6 +656,9 @@ export const COMMANDS: readonly Command[] = [
     signScope: "duel:{id}",
     requiresFlag: "duels",
     fields: [{ name: "id", label: "Duel id" }],
+    note:
+      "The same duel, read as a participant: adds the fighter you committed. Everything about your " +
+      "opponent still waits for the reveal.",
   },
   {
     id: "release",
@@ -619,6 +673,27 @@ export const COMMANDS: readonly Command[] = [
     destructive: true,
     fields: [{ name: "id", label: "Character id", kind: "number" }],
     note: "Destroys the slot's claim. It does not transfer to anyone, and it cannot be undone.",
+  },
+  {
+    id: "set_preset",
+    label: "Set the standing preset",
+    tier: "signed",
+    group: "Stable",
+    method: "PATCH",
+    path: "/api/character/:id",
+    price: "signed",
+    cents: 0,
+    signScope: "character:{id}",
+    fields: [
+      { name: "id", label: "Character id", kind: "number" },
+      {
+        name: "presetActionIds",
+        label: "Preset actions",
+        kind: "actions",
+        hint: "Menu indices in exchange order, the same integers a submission takes.",
+      },
+    ],
+    note: "Standing orders, stored by the arena on your fighter and sealed — never shown on the public character page. A selection window's close commits them as your sequence unless a live submission replaced them, and the close reads the LATEST value, so running this again during the window is the revision path. A live submission still outranks it for that match, and a preset does not survive a sale — the arena ignores one set by a previous owner.",
   },
   {
     id: "forge",
@@ -806,6 +881,9 @@ export const COMMANDS: readonly Command[] = [
     maxField: true,
     requiresFlag: "heirMarket",
     fields: [{ name: "id", label: "Heir id", kind: "number" }],
+    note:
+      "Buys the claim right to a listed heir and moves holdership to you on settlement. The arena " +
+      "quotes from the listing; you name a maximum.",
   },
   {
     id: "list_lordship",
@@ -824,6 +902,9 @@ export const COMMANDS: readonly Command[] = [
       { name: "transferTo", label: "Transfer to", placeholder: "0x…", optional: true },
       { name: "delist", label: "Delist", kind: "boolean", optional: true },
     ],
+    note:
+      "List, reprice, delist or gift a Lordship you hold. Moves no money — what you send is what you " +
+      "are asking, not what you pay.",
   },
   {
     id: "buy_lordship",
@@ -837,6 +918,9 @@ export const COMMANDS: readonly Command[] = [
     maxField: true,
     requiresFlag: "lordships",
     fields: [{ name: "id", label: "Lordship id" }],
+    note:
+      "Buys a listed Lordship and records the investiture to you on settlement. The arena quotes from " +
+      "the listing; you name a maximum.",
   },
   {
     id: "buy_genesis",

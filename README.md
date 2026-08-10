@@ -1,6 +1,6 @@
 # Dethrone Console
 
-**A single-tenant operator console for the [Dethrone](https://dethrone.bot) arena. One wallet, held server-side, that signs and pays on your behalf.**
+**A single-tenant operator console for the [Dethrone](https://dethrone.bot) arena. Wallets held server-side — one signing at a time — that pay on your behalf.**
 
 The console is a keyboard, not a player. It holds no game rules, computes no prices, and persists no credential. Every button does the same three things: fill a path, attach a signature or a payment, render what came back.
 
@@ -26,7 +26,7 @@ Three rules, and the reason each exists.
 
 **A UI that computes money will one day compute it wrong.** Prices come from `GET /api/rules` and from the 402 body. The catalogue's price strings are labels for humans, and a test fails the build if a currency literal appears anywhere under `src/app/` or `src/components/`.
 
-**A key in a shared runtime is custody.** This is single-tenant by construction. There is no multi-user mode, no session table, no "connect wallet" for a second person. The moment two people can spend one key, this is a custodial product and a different application.
+**A key in a shared runtime is custody.** This is single-tenant by construction. There is no multi-user mode, no session table, no "connect wallet" for a second person. The moment two people can spend one key, this is a custodial product and a different application. Configuring [several wallets](#several-wallets) does not change that: it is still one person at one keyboard, holding several of their own keys.
 
 ---
 
@@ -86,7 +86,7 @@ Four shapes, in ascending order of what they ask you to trust. **The custody que
 
 ### B — Vercel, protected, single operator
 
-Still one operator and one key, but the key now sits in a runtime you administer rather than one you hold. Three conditions, each enforced:
+Still one operator, but the keys now sit in a runtime you administer rather than one you hold. Every key you configure is subject to the three conditions below. Three conditions, each enforced:
 
 1. **Deployment Protection is mandatory.** Preview deployments *inherit environment variables*, so a Preview-scoped key on an unprotected preview URL is option D wearing a different hat. The console refuses to build with a key present on a preview unless `CONSOLE_ALLOW_PREVIEW_KEY=true`, and refuses on production unless `CONSOLE_PROTECTION_CONFIRMED=true`.
 2. **The ceiling needs a shared store.** Serverless invocations do not share memory, so a per-process counter becomes a per-invocation check — nearly no protection. Set `KV_REST_API_URL` and `KV_REST_API_TOKEN` to back it with Upstash Redis. Without them the console renders the ceiling as **disabled** rather than as a number that would reset between two clicks.
@@ -113,7 +113,7 @@ Not a deployment option. A URL anyone can reach that can spend a wallet is a hos
 
 ## Money safety
 
-- **The ceiling** (`CONSOLE_MAX_SPEND_CENTS`) bounds one sitting — one process lifetime. It can be **tightened from the UI and never loosened**: a seatbelt you can widen at the moment it stops you is not a seatbelt, and the failure mode is one click long. Raising it means editing `.env.local` and restarting, which is an act you have to mean. Note that lowering the cap below `CONSOLE_CONFIRM_OVER_CENTS` in env is a hard boot failure (`CONSOLE_CAP_BELOW_CONFIRM`) — lower both together. The amount is *reserved before* the request and released if it did not settle, so two concurrent clicks cannot both pass a check only one should — and what you observe still never rises on a non-2xx, because x402 settles on handler success and a refusal costs nothing.
+- **The ceiling** (`CONSOLE_MAX_SPEND_CENTS`) bounds one sitting — one process lifetime, **across every wallet you have configured**. Switching wallets does not reset it, because a seatbelt you can unbuckle from a dropdown would not be one. It can be **tightened from the UI and never loosened**: a seatbelt you can widen at the moment it stops you is not a seatbelt, and the failure mode is one click long. Raising it means editing `.env.local` and restarting, which is an act you have to mean. Note that lowering the cap below `CONSOLE_CONFIRM_OVER_CENTS` in env is a hard boot failure (`CONSOLE_CAP_BELOW_CONFIRM`) — lower both together. The amount is *reserved before* the request and released if it did not settle, so two concurrent clicks cannot both pass a check only one should — and what you observe still never rises on a non-2xx, because x402 settles on handler success and a refusal costs nothing.
 - **The offer gate.** For a command whose price the arena holds — take a duel, buy an heir, book an exhibition — you name a maximum. When the 402 quotes more, the offer is stripped before the payment library ever sees it, so the console has *refused a price* rather than paid it and complained afterwards.
 - **Confirmation is a protocol step, not a dialog.** Anything above `CONSOLE_CONFIRM_OVER_CENTS`, and every caller-priced command at any amount, returns `428` naming the amount and the paying address. The browser echoes those numbers back and the route refuses an echo it did not compute. A `window.confirm()` would be bypassable by anything that can POST, and untestable.
 - **The threshold tightens and never loosens.** A caller may ask `/api/act` to demand a confirmation it would otherwise skip — the agent does, since the 428 is the only place a price is revealed before it settles, and its per-action cap is far below a human's threshold. The route takes the minimum, so a request can make it *ask* a question and can never make it stop asking one. This exists because the cap had a hole without it: a paid command cheaper than `CONSOLE_CONFIRM_OVER_CENTS` used to execute with the agent never seeing an amount, which made the cap not a cap for exactly the commands most likely to run. Every test passed while that was true; running it found it in a minute.
@@ -121,6 +121,29 @@ Not a deployment option. A URL anyone can reach that can spend a wallet is a hos
 - **The ceiling is not escrow.** It lives in this app's own process and protects against a stray click, not against a compromised host. It is not a record either — what your wallet actually spent is on-chain, and every match the arena settles is public on its own pages. (This bullet used to point at `GET /api/treasury` as the ledger. That route is `ADMIN_TOKEN`, which `src/lib/commands.ts` has always said; naming an endpoint you cannot call as your receipt is worse than naming none.)
 
 Signed requests are the mirror image and the difference matters: every `(scope, wallet, timestamp)` is accepted once, so a signed retry **must** re-sign with a fresh timestamp or it dies as a replay. Both rules are true and they look contradictory; conflating them turns a retry loop into either a second payment or a permanent 401.
+
+---
+
+## Several wallets
+
+One key is the common case and needs nothing here. If you hold more than one — a fighter per House, a scratch wallet, a funded one — configure them all and switch from the masthead.
+
+```bash
+DETHRONE_PRIVATE_KEY=0x…                  # offered first, labelled "Primary"
+DETHRONE_PRIVATE_KEY_SCRAPYARD=0x…        # "Scrapyard"
+DETHRONE_PRIVATE_KEY_COLD_STORAGE=0x…     # "Cold Storage"
+```
+
+The suffix is the label, so name them after what they are. The bare variable comes first and the rest follow alphabetically; it is not required, and a console configured only with suffixed variables behaves identically. Every one of them is validated at boot, and a malformed key names its own variable in the refusal.
+
+Four properties, and each of them is a decision rather than an accident:
+
+- **The ceiling is shared.** `CONSOLE_MAX_SPEND_CENTS` bounds the sitting, not the wallet. The obvious implementation keys the counter by address, and that turns the dropdown into a way to unbuckle the seatbelt: *N* wallets, *N* times the cap. `test/wallet-route.test.ts` fails if the counter ever resets across a switch.
+- **The selection is server-held, never a request field.** `POST /api/wallet` moves a pointer in the console's own memory, and `/api/act` reads it. It is deliberately *not* a field on the request that spends, for the reason the autonomy grant is not one either: anything the browser can assert, anything that can POST can assert. It follows that the selection resets to the first wallet when the process restarts, and that a second tab can be one render behind — a paid command from a stale tab produces a confirmation naming an address you did not expect, and stops there.
+- **An autonomy grant does not survive a switch.** The acknowledgement you confirmed names an address. Selecting a different wallet drops the grant and the chat pane says so; the agent goes back to proposing, which is the safe direction to fail in.
+- **A switch cannot change who pays for a request already in flight.** The signing account is captured before the first `await`, so there is no lock and no "try again, something is running".
+
+Read-only mode is unchanged: no key of either form means no picker, no paid command, and every free read still working.
 
 ---
 
@@ -188,8 +211,8 @@ your disk ──► process env ──► server-only: wallet.ts · sign.ts · p
                                                      (no wallet key, ever)
 ```
 
-- **Three modules see the key**, all marked `server-only`. `test/deps.test.ts` walks the import graph and fails if anything under `components/` can reach one — reporting the path, not a boolean.
-- **`wallet.ts` exports no way to read the raw key.** There is no `getPrivateKey()` to misuse.
+- **Three modules see the keys**, all marked `server-only`. `test/deps.test.ts` walks the import graph and fails if anything under `components/` can reach one — reporting the path, not a boolean.
+- **`wallet.ts` exports no way to read a raw key.** There is no `getPrivateKey()` to misuse, and no plural of one — the two routes that need the literal strings for redaction read `process.env` themselves, resolving *which* variables from the same helper the boot check uses, so the list cannot fall out of step with a wallet the console will sign with.
 - **Nothing that could reconstruct a payment is ever logged or returned.** An explicit redactor runs over every envelope, including `Error.stack` — which is the one place a secret escapes without anyone choosing to leak it.
 - **Transaction hashes, addresses and genomes survive redaction.** A genome is 64 hex characters, shaped exactly like a private key, and it is the entire asset. A redactor that eats the receipt is worse than none.
 - **The agent's keys are a second shape, and the checks now know it.** Until the chat pane the only credential here was `0x` and 64 hex, so a 0x-shaped test was a complete test. An `sk-ant-…` key matched nothing. The boot assertion, the redactor and the bundle scan each learned the new shape — and each also learned to fail on a variable *named* like a credential, because the provider after next will have a shape nobody here has seen.
@@ -231,7 +254,7 @@ What the suite actually enforces:
 
 ## What this is not
 
-No multi-operator anything. No browser-held key, wallet-connect widget, or embedded wallet — the key is server-side in a process you own, and a browser wallet is a different product with a different threat model. No bookkeeping: the chain and the arena's own pages are the record. No token accounting either: there is no model pricing and no per-turn cost anywhere on this screen, because a second currency on a money screen is one currency too many.
+No multi-operator anything — several wallets is several keys held by one person, not several people. There is no per-wallet session, no per-wallet ceiling, and no way for two operators to hold different selections; the selection is one pointer in one process. No browser-held key, wallet-connect widget, or embedded wallet — the key is server-side in a process you own, and a browser wallet is a different product with a different threat model. No bookkeeping: the chain and the arena's own pages are the record. No token accounting either: there is no model pricing and no per-turn cost anywhere on this screen, because a second currency on a money screen is one currency too many.
 
 **No scheduling.** Nothing here runs unless a person opens a turn. There is no cron, no queue, no background loop, and closing the tab ends it.
 
@@ -245,7 +268,7 @@ Still no strategy, and the distinction is worth keeping: the agent reads the can
 
 Distinct from [the agent in the pane](#the-agent), and worth keeping distinct. That one runs inside this console and is bounded by it; this is your own runtime talking to the arena directly, bounded by nothing here.
 
-`.mcp.json` ships two servers: a remote read-only one that needs no wallet, and a local one that pays with the key already in your environment. The file is safe to commit — `${DETHRONE_PRIVATE_KEY}` is passed through from your shell, not stored.
+`.mcp.json` ships two servers: a remote read-only one that needs no wallet, and a local one that pays with the key already in your environment. The file is safe to commit — `${DETHRONE_PRIVATE_KEY}` is passed through from your shell, not stored. It is always your **primary** key: that server is a separate process with its own notion of a wallet, and the console's dropdown has no effect on it.
 
 ```bash
 set -a && source .env.local && set +a
@@ -257,4 +280,4 @@ The same reasoning applies as here: payment happens in *your* process, so there 
 
 ---
 
-MIT. Humans watch. Bots fight. You hold the key.
+MIT. Humans watch. Bots fight. You hold the keys.

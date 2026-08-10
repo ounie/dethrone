@@ -297,6 +297,33 @@ describe("the autonomy handshake, over the wire", () => {
     expect(res.body.active).toBe(false);
     expect((await post({ kind: "status" })).body.autonomy.active).toBe(false);
   });
+
+  it("dies when the operator switches wallet", async () => {
+    // The second key is stubbed inside the case rather than in `beforeEach`, so
+    // every other case in this file keeps its single-wallet world.
+    vi.stubEnv("DETHRONE_PRIVATE_KEY_SCRAPYARD", "0x" + "b".repeat(64));
+    vi.resetModules();
+    delete (globalThis as Record<string, unknown>).__dethrone_console_wallet__;
+
+    await enableAutonomy();
+    expect((await post({ kind: "status" })).body.autonomy.active).toBe(true);
+
+    const { POST } = await import("@/app/api/wallet/route");
+    const switched = await POST(
+      new Request("http://127.0.0.1:3939/api/wallet", {
+        method: "POST",
+        headers: { host: "127.0.0.1:3939", "content-type": "application/json" },
+        body: JSON.stringify({ id: "scrapyard" }),
+      }),
+    );
+    expect(((await switched.json()) as { autonomyRevoked: boolean }).autonomyRevoked).toBe(true);
+
+    // An acknowledgement names an address. Carrying the grant to a wallet
+    // nobody confirmed is the one thing the handshake exists to prevent.
+    expect((await post({ kind: "status" })).body.autonomy.active).toBe(false);
+
+    delete (globalThis as Record<string, unknown>).__dethrone_console_wallet__;
+  });
 });
 
 describe("a turn", () => {

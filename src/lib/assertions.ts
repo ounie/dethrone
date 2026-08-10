@@ -120,6 +120,98 @@ export function isTruthyFlag(value: string | undefined): boolean {
   return value === "true" || value === "1" || value === "yes";
 }
 
+/** Exported so the boot check and `wallet.ts` test the same shape. */
+export function isWalletKey(value: string): boolean {
+  return KEY_RE.test(value);
+}
+
+/** One configured wallet key, identified by its variable NAME. Never its value. */
+export interface WalletKeyVar {
+  /** The environment variable, e.g. `DETHRONE_PRIVATE_KEY_SCRAPYARD`. */
+  name: string;
+  /** Stable id, from the suffix. Compared, never rendered. */
+  id: string;
+  /** What the picker says. Derived from the NAME, never from the key. */
+  label: string;
+  primary: boolean;
+}
+
+const KEY_VAR = "DETHRONE_PRIVATE_KEY";
+const SUFFIX_RE = /^[A-Za-z0-9][A-Za-z0-9_]*$/;
+
+/** `COLD_STORAGE` → `Cold Storage`, `SCRAPYARD` → `Scrapyard`, `2` → `2`. */
+function labelFor(suffix: string): string {
+  return suffix
+    .split("_")
+    .map((part) => (/^\d+$/.test(part) ? part : part[0].toUpperCase() + part.slice(1).toLowerCase()))
+    .join(" ");
+}
+
+/**
+ * Which environment variables hold a wallet key, in the order the console
+ * offers them.
+ *
+ * ## It returns names, never values
+ *
+ * That is the property that makes it safe to live here. `assertions.ts` is
+ * deliberately **not** `server-only` — `scripts/assert-config.ts` imports it
+ * from a bare `tsx` process — so a function here that returned raw keys would
+ * be a new place a secret can escape. Every caller reads `env[name]` itself,
+ * which preserves the rule `wallet.ts` states at length: reading a raw key is a
+ * visible act at the call site, not something a helper does on your behalf.
+ *
+ * ## Why the scan lives here and not in `wallet.ts`
+ *
+ * The boot check and the runtime must agree on which variables are wallet keys.
+ * Two scans would drift on the ordering rule or the label derivation, and the
+ * drift would be invisible: the boot check would validate a variable the
+ * runtime never loads, or — worse — the runtime would happily sign with a key
+ * nothing ever validated. One definition, three consumers: this file's
+ * assertion 1, `wallet.ts`, and the redaction lists in the two routes that need
+ * to know every secret this process holds.
+ *
+ * ## Empty after trim is absent
+ *
+ * Not a detail. `config().hasKey` and `wallet.ts`'s `hasWallet()` are computed
+ * by different code paths and must agree; a variable set to `""` (which is how
+ * several tests stub an absent one, and how `${VAR}` expansion renders an unset
+ * one) has to read as "no key" on both sides. Divergence here means a deploy
+ * that refuses to boot over a key it cannot use, or one that offers a wallet
+ * that cannot sign.
+ */
+export function walletKeyVars(env: EnvLike): WalletKeyVar[] {
+  const found: WalletKeyVar[] = [];
+  let primary: WalletKeyVar | null = null;
+
+  for (const name of Object.keys(env)) {
+    if (!name.startsWith(KEY_VAR)) continue;
+    if (!env[name]?.trim()) continue;
+
+    if (name === KEY_VAR) {
+      primary = { name, id: "primary", label: "Primary", primary: true };
+      continue;
+    }
+    if (name[KEY_VAR.length] !== "_") continue;
+
+    const suffix = name.slice(KEY_VAR.length + 1);
+    // A variable this console does not recognise is not this console's
+    // business. Warning about it would fire on someone's unrelated
+    // `DETHRONE_PRIVATE_KEY-BACKUP` note, and a warning that cries wolf is a
+    // warning that gets switched off.
+    if (!SUFFIX_RE.test(suffix)) continue;
+
+    found.push({ name, id: suffix.toLowerCase(), label: labelFor(suffix), primary: false });
+  }
+
+  // Plain `<`, not `localeCompare`: the latter is locale- and ICU-dependent, so
+  // an ordering that claims to be deterministic would in fact depend on the
+  // host's locale data. ASCII puts `_2` before `_SCRAPYARD`, and that is the
+  // order the tests pin.
+  found.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+
+  return primary ? [primary, ...found] : found;
+}
+
 /** Vercel, Lambda, or anything else where two clicks can land in two isolates. */
 export function isServerless(env: EnvLike): boolean {
   return env.VERCEL === "1" || !!env.AWS_LAMBDA_FUNCTION_NAME || !!env.FUNCTIONS_WORKER_RUNTIME;
@@ -143,18 +235,42 @@ export function assertConsoleConfig(env: EnvLike, host: string | null): Finding[
   const fail = (code: string, message: string) => findings.push({ level: "fail", code, message });
   const warn = (code: string, message: string) => findings.push({ level: "warn", code, message });
 
-  const rawKey = env.DETHRONE_PRIVATE_KEY?.trim();
-  const hasKey = !!rawKey;
+  const keyVars = walletKeyVars(env);
+  const hasKey = keyVars.length > 0;
 
-  // ── 1. The key parses, or we fail here rather than at settle ──────────────
+  // ── 1. Every configured key parses, or we fail here rather than at settle ──
   //
   // A malformed key that reaches the facilitator surfaces as an opaque payment
   // error three layers down, after a request has already left the process.
-  if (hasKey && !KEY_RE.test(rawKey)) {
-    fail(
-      "CONSOLE_BAD_KEY",
-      "DETHRONE_PRIVATE_KEY is not a 32-byte hex key. Expected 0x followed by exactly 64 hex characters.",
-    );
+  //
+  // The message names WHICH variable. With one key that was obvious; with a
+  // dropdown's worth it is the difference between a one-line fix and reading
+  // sixty-four hex characters off four lines of `.env.local`. The CODE stays
+  // `CONSOLE_BAD_KEY` — it is the same fault, and every caller matching on it
+  // is still right.
+  const seen = new Map<string, string>();
+  for (const v of keyVars) {
+    const raw = env[v.name]!.trim();
+    if (!isWalletKey(raw)) {
+      fail(
+        "CONSOLE_BAD_KEY",
+        `${v.name} is not a 32-byte hex key. Expected 0x followed by exactly 64 hex characters.`,
+      );
+      continue;
+    }
+    // Two names for one wallet. A warning and not a refusal: now that the
+    // ceiling is sitting-wide rather than per-address, the consequence is a
+    // confusing dropdown, not a hazard — and refusing to boot over a
+    // copy-paste is a failure worse than the fault.
+    const first = seen.get(raw);
+    if (first) {
+      warn(
+        "CONSOLE_DUPLICATE_WALLET_KEY",
+        `${v.name} holds the same key as ${first}. They are one wallet under two names, and the picker will show it twice.`,
+      );
+    } else {
+      seen.set(raw, v.name);
+    }
   }
 
   // ── 2. The ceiling is above the confirmation threshold ────────────────────

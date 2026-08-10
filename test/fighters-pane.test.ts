@@ -28,6 +28,10 @@ function render(stable: { enabled: boolean; reason?: string }): string {
   return renderToStaticMarkup(
     createElement(FightersPane, {
       capabilities: { stable },
+      // The panel never renders this — it reads it only to notice that the
+      // wallet changed, which is a client-side question a static render cannot
+      // ask. `null` keeps these cases about the capability, as they were.
+      operator: null,
       disabled: false,
       sequenceLength: SEQ,
       onArm: () => {},
@@ -43,12 +47,12 @@ function render(stable: { enabled: boolean; reason?: string }): string {
  * `act(someVariable, …)` would be invisible here, which is why the second test
  * below also refuses a non-literal argument.
  */
-function commandIdsIssued(): { literals: string[]; dynamic: number } {
+function callsNaming(fn: string): { literals: string[]; dynamic: number } {
   const literals: string[] = [];
   let dynamic = 0;
   visitFile(PANE, (node) => {
     if (!ts.isCallExpression(node)) return;
-    if (!ts.isIdentifier(node.expression) || node.expression.text !== "act") return;
+    if (!ts.isIdentifier(node.expression) || node.expression.text !== fn) return;
     const first = node.arguments[0];
     if (first && ts.isStringLiteral(first)) literals.push(first.text);
     else dynamic++;
@@ -56,8 +60,13 @@ function commandIdsIssued(): { literals: string[]; dynamic: number } {
   return { literals, dynamic };
 }
 
+function commandIdsIssued(): { literals: string[]; dynamic: number } {
+  return callsNaming("act");
+}
+
 describe("the Fighters panel spends nothing", () => {
   const { literals, dynamic } = commandIdsIssued();
+  const armed = callsNaming("onArm");
   const paid = new Set(COMMANDS.filter((c) => c.tier === "paid").map((c) => c.id));
 
   it("issues at least one command, so the assertions below are not vacuous", () => {
@@ -90,6 +99,32 @@ describe("the Fighters panel spends nothing", () => {
     const known = new Set(COMMANDS.map((c) => c.id));
     const unknown = literals.filter((id) => !known.has(id));
     expect(unknown, `not in the catalogue: ${unknown.join(", ")}`).toEqual([]);
+  });
+
+  it("arms only commands that exist in the catalogue", () => {
+    /*
+      The other half of the same question, and the one with no symptom.
+
+      An `act()` with a bad id gets an error envelope back and the operator sees
+      it. An `onArm()` with a bad id reaches `loadCommand`, whose `byId` returns
+      undefined and which then RETURNS SILENTLY — a button that looks live,
+      does nothing when pressed, and reports nothing. That is the failure this
+      catches, and it is the reason the empty Stable's Forge button is worth a
+      line here at all.
+    */
+    const known = new Set(COMMANDS.map((c) => c.id));
+    const unknown = armed.literals.filter((id) => !known.has(id));
+    expect(unknown, `armed but not in the catalogue: ${unknown.join(", ")}`).toEqual([]);
+    expect(armed.dynamic, "a command id is computed rather than named").toBe(0);
+  });
+
+  it("offers a Forge from an empty Stable, and ARMS it rather than paying", () => {
+    // Forge is paid. The empty state is the one place this panel can answer
+    // directly — "your wallet already contains it" is literally true — and the
+    // button must still put the command in front of the operator rather than
+    // settle it. The paid-command assertion above is what enforces that; this
+    // one is what stops the affordance quietly disappearing.
+    expect(armed.literals).toContain("forge");
   });
 
   it("runs no clock — no countdown against the window's deadline", () => {
@@ -159,5 +194,108 @@ describe("a keyed deploy can start", () => {
     // settles an amount; `globals.css`'s first paragraph is what that colour
     // means, and it is enforced socially everywhere except here.
     expect(html).not.toMatch(/class="[^"]*\brun\b[^"]*"/);
+  });
+});
+
+/**
+ * The panel belongs to one wallet, and it outlives a change of wallet.
+ *
+ * `router.refresh()` re-renders the server tree and deliberately keeps client
+ * state, so the roster, the chosen fighter, the menu, the plan and the match
+ * watch all survive a switch unless something empties them. Two mechanisms do:
+ * a render-time reset keyed on the operator, and an auto-open that runs once
+ * per wallet rather than once per mount.
+ *
+ * Asserted off the AST rather than by mounting, for this file's stated reason —
+ * the suite has no DOM, and adding one to ask this question would put a
+ * lifecycle in a file that is otherwise about static output. The two things
+ * pinned here are the two that stop working silently: a dependency array that
+ * loses `operator` never re-reads, and a reset that loses a setter leaves one
+ * wallet's object on another wallet's screen.
+ */
+
+/** Whether any descendant of `node` is an identifier with this name. */
+function mentions(node: ts.Node, name: string): boolean {
+  let found = false;
+  const walk = (n: ts.Node) => {
+    if (found) return;
+    if (ts.isIdentifier(n) && n.text === name) found = true;
+    else ts.forEachChild(n, walk);
+  };
+  walk(node);
+  return found;
+}
+
+describe("the panel does not carry one wallet's Stable into another's", () => {
+  it("takes the operator as a prop", () => {
+    // Never rendered. It is here so the panel can notice the wallet changed.
+    expect(read(PANE)).toMatch(/operator:\s*string\s*\|\s*null/);
+  });
+
+  it("re-reads the Stable when the operator changes", () => {
+    let found = false;
+    visitFile(PANE, (node) => {
+      if (!ts.isCallExpression(node)) return;
+      if (!ts.isIdentifier(node.expression) || node.expression.text !== "useEffect") return;
+      // The auto-open effect, identified by what it calls rather than by
+      // position — a reorder must not quietly move this assertion onto the
+      // window-watch effect, which has nothing to do with wallets.
+      const [body, deps] = node.arguments;
+      if (!body || !mentions(body, "loadRoster")) return;
+      if (!deps || !ts.isArrayLiteralExpression(deps)) return;
+      found = deps.elements.some((e) => ts.isIdentifier(e) && e.text === "operator");
+    });
+    expect(
+      found,
+      "the auto-open effect does not depend on `operator`, so a switch would leave the previous Stable on screen",
+    ).toBe(true);
+  });
+
+  it("clears every piece of the previous wallet's state", () => {
+    /*
+      The plan (`setPicks`) and the watch (`setWatch`) matter most, for
+      different reasons. A plan is a list of MENU INDICES, so carrying five of
+      them to a fighter another wallet owns submits five legal integers naming
+      five different moves — `combos.ts` makes exactly this argument about why
+      saved combos store action ids instead. A watch is a match the previous
+      wallet is in, which the new one cannot sign for.
+    */
+    const cleared = new Set<string>();
+    visitFile(PANE, (node) => {
+      if (!ts.isIfStatement(node)) return;
+      const cond = node.expression;
+      if (!ts.isBinaryExpression(cond)) return;
+      if (cond.operatorToken.kind !== ts.SyntaxKind.ExclamationEqualsEqualsToken) return;
+      if (!ts.isIdentifier(cond.left) || cond.left.text !== "operator") return;
+
+      const collect = (n: ts.Node) => {
+        if (
+          ts.isCallExpression(n) &&
+          ts.isIdentifier(n.expression) &&
+          /^set[A-Z]/.test(n.expression.text)
+        ) {
+          cleared.add(n.expression.text);
+        }
+        ts.forEachChild(n, collect);
+      };
+      collect(node.thenStatement);
+    });
+
+    for (const setter of [
+      "setRoster",
+      "setSelected",
+      "setMenu",
+      "setPicks",
+      "setWatch",
+      "setSubmitNote",
+    ]) {
+      expect(cleared.has(setter), `a wallet switch does not clear ${setter}`).toBe(true);
+    }
+  });
+
+  it("does not clear saved combos, which are not a fact about a wallet", () => {
+    // They live in localStorage and store stable action ids rather than
+    // indices. They are the operator's own vocabulary, and survive on purpose.
+    expect(read(PANE)).not.toMatch(/writeCombos\(\s*\[\s*\]\s*\)/);
   });
 });

@@ -31,6 +31,10 @@ const OWN_ROUTES: { path: string; why: string }[] = [
     why: "Tightens the local spend ceiling. Makes no outbound request, holds no key, and can only ever LOWER the cap — test/ceiling-route.test.ts pins that.",
   },
   {
+    path: "/api/wallet",
+    why: "Switches which configured wallet signs for the rest of this sitting. It makes no outbound request at all, holds no key, mints no signature and cannot attach a payment — it moves a pointer in this process's memory and drops any autonomy grant on the way out, because a grant names an address in the sentence the operator read. It exists precisely so that WHICH WALLET PAYS is never a field on /api/act: anything the browser can assert, anything that can POST can assert. test/wallet-route.test.ts pins that it cannot spend, cannot reach the arena, and above all cannot reset the spend ceiling.",
+  },
+  {
     path: "/api/chat",
     why: "The agent's turn. It holds provider keys and calls a language model, but it reaches the canon only by invoking /api/act's own exported handler — so every gate in that file runs, in order, for every tool call. The import-graph assertion at the bottom of this file proves it structurally, and test/chat-route.test.ts pins that signed and paid tools stay proposals unless a server-held grant says otherwise.",
   },

@@ -26,7 +26,7 @@ async function post(capCents: unknown) {
 
 async function currentCap(): Promise<number> {
   const { spendStore } = await import("@/lib/spend");
-  return spendStore(null).cap();
+  return spendStore().cap();
 }
 
 beforeEach(() => {
@@ -96,7 +96,7 @@ describe("a tightened ceiling actually binds", () => {
   it("refuses a reservation above the new cap", async () => {
     await post(120);
     const { spendStore } = await import("@/lib/spend");
-    const store = spendStore(null);
+    const store = spendStore();
 
     expect(await store.reserve(100)).toMatchObject({ ok: true });
     // 100 + 100 = 200 > 120: the tightened cap, not the configured 500.

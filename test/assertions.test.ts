@@ -55,6 +55,81 @@ describe("1 — the key parses at boot, not at settle", () => {
   });
 });
 
+/**
+ * The same assertion, once several keys can be configured.
+ *
+ * The code stays `CONSOLE_BAD_KEY` on purpose — it is the same fault, and every
+ * caller matching on it is still right. What changed is that the message has to
+ * name *which* variable, because "the key is bad" is not an actionable sentence
+ * when four are configured and only one of them is sixty-four hex characters.
+ *
+ * The duplicate warning is the only new finding in this file, and it is gated
+ * structurally rather than on a flag: it cannot fire without two wallet
+ * variables, and no other fixture anywhere sets a suffixed one. That is what
+ * keeps the dozen `toEqual([])` cases above and below untouched.
+ */
+describe("1b — every configured key parses, and the finding names which one", () => {
+  const OTHER = "0x" + "b".repeat(64);
+
+  it("accepts a primary and its extras", () => {
+    expect(
+      codes({
+        DETHRONE_PRIVATE_KEY: KEY,
+        DETHRONE_PRIVATE_KEY_SCRAPYARD: OTHER,
+      }),
+    ).toEqual([]);
+  });
+
+  it("accepts extras with no primary — that is a supported deploy, not a mistake", () => {
+    expect(codes({ DETHRONE_PRIVATE_KEY_SCRAPYARD: OTHER })).toEqual([]);
+    expect(warnings({ DETHRONE_PRIVATE_KEY_SCRAPYARD: OTHER })).toEqual([]);
+  });
+
+  it("refuses a malformed extra even when the primary is fine", () => {
+    const findings = assertConsoleConfig(
+      { DETHRONE_PRIVATE_KEY: KEY, DETHRONE_PRIVATE_KEY_SCRAPYARD: "0xnope" },
+      LOOPBACK,
+    );
+    const bad = findings.find((f) => f.code === "CONSOLE_BAD_KEY");
+    expect(bad?.level).toBe("fail");
+    // The whole point of the change: the operator is told which line to fix.
+    expect(bad?.message).toContain("DETHRONE_PRIVATE_KEY_SCRAPYARD");
+  });
+
+  it("an extra alone still trips the deployment gates that a key trips", () => {
+    // `hasKey` gates assertions 3, 4, 5 and 9. If it only counted the bare
+    // variable, an extras-only deploy would skip every one of them.
+    expect(
+      codes({ DETHRONE_PRIVATE_KEY_SCRAPYARD: OTHER }, "0.0.0.0"),
+    ).toContain("CONSOLE_NOT_LOOPBACK");
+  });
+
+  it("a variable set to empty is absent — not a key, not a finding", () => {
+    expect(codes({ DETHRONE_PRIVATE_KEY: "", DETHRONE_PRIVATE_KEY_SCRAPYARD: "  " })).toEqual([]);
+    expect(codes({ DETHRONE_PRIVATE_KEY: "" }, "0.0.0.0")).toEqual([]);
+  });
+
+  it("warns, and does not refuse, when two variables hold the same key", () => {
+    const findings = assertConsoleConfig(
+      { DETHRONE_PRIVATE_KEY: KEY, DETHRONE_PRIVATE_KEY_SPARE: KEY },
+      LOOPBACK,
+    );
+    // A copy-paste is a confusing dropdown, not a hazard — the ceiling is
+    // sitting-wide, so two names for one wallet costs nothing. Refusing to boot
+    // over it would make the failure worse than the fault.
+    expect(findings.filter((f) => f.level === "fail")).toEqual([]);
+    const dupe = findings.find((f) => f.code === "CONSOLE_DUPLICATE_WALLET_KEY");
+    expect(dupe?.level).toBe("warn");
+    expect(dupe?.message).toContain("DETHRONE_PRIVATE_KEY_SPARE");
+  });
+
+  it("does not warn about two DIFFERENT keys, which is the whole feature", () => {
+    expect(
+      warnings({ DETHRONE_PRIVATE_KEY: KEY, DETHRONE_PRIVATE_KEY_SCRAPYARD: OTHER }),
+    ).toEqual([]);
+  });
+});
+
 describe("2 — the ceiling is above the confirmation threshold", () => {
   it("accepts cap >= confirm", () => {
     expect(

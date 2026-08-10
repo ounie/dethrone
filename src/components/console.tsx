@@ -74,6 +74,27 @@ export default function Console({
     confirm: { amountCents: number; payer: string };
   } | null>(null);
 
+  /*
+    A confirmation does not survive the wallet it names.
+
+    `router.refresh()` re-renders the server tree and deliberately KEEPS client
+    state, so an open dialog genuinely outlives a wallet switch — it would sit
+    there naming an address that is no longer signing, and the operator would
+    press Confirm on terms nobody now holds. `/api/act` refuses that echo, which
+    is the guarantee; this is so the screen agrees with it rather than making
+    the operator discover it by clicking.
+
+    Adjusted during render rather than in an effect, which is React's own
+    prescription for "reset state when a prop changes" — an effect would render
+    the stale dialog once, then blank it, and the lint rule that says so is
+    right.
+  */
+  const [signedAs, setSignedAs] = useState(operator);
+  if (operator !== signedAs) {
+    setSignedAs(operator);
+    setPending(null);
+  }
+
   /**
    * One envelope, absorbed.
    *
@@ -113,12 +134,30 @@ export default function Console({
     [],
   );
 
+  /*
+    How many times a command has been armed this sitting.
+
+    A counter and not a boolean, because the interesting event is "armed
+    AGAIN" — arming the same command twice has to be as visible as arming a
+    different one, and a boolean that is already true says nothing the second
+    time. `CommandPane` watches it and does the one thing this needed: brings
+    itself into view and says, briefly and visibly, that it changed.
+
+    The problem it solves is real and was reported from the chair: pressing
+    Forge in the Fighters panel silently rewrote a card somewhere else on the
+    screen, and an operator who did not already know the pane existed had no
+    reason to look at it. An affordance nobody notices is an affordance nobody
+    has.
+  */
+  const [armedAt, setArmedAt] = useState(0);
+
   /** A proposal, accepted. Pre-fills the form; it does not run anything. */
   const loadCommand = useCallback((commandId: string, next: Record<string, string>) => {
     const cmd = byId(commandId);
     if (!cmd) return;
     setActive(cmd);
     setArgs(next);
+    setArmedAt((n) => n + 1);
   }, []);
 
   /**
@@ -274,6 +313,7 @@ export default function Console({
           stakeRange={stakeRange}
           forgeNote={forgeNote}
           sequenceLength={sequenceLength}
+          armedAt={armedAt}
           onArg={(name, value) => setArgs((prev) => ({ ...prev, [name]: value }))}
           onRun={() => void send(active, args)}
         />
@@ -287,6 +327,7 @@ export default function Console({
         */}
         <FightersPane
           capabilities={capabilities}
+          operator={operator}
           disabled={busy}
           sequenceLength={sequenceLength}
           onArm={loadCommand}

@@ -147,6 +147,47 @@ describe("the handshake", () => {
   });
 });
 
+/**
+ * A grant belongs to the wallet named in the sentence the operator read.
+ *
+ * This was a real hole and not a hypothetical: `read()` checked the clock and
+ * nothing else, so with several keys configured a grant minted while wallet A
+ * was selected kept answering "full" after a switch to B — and the agent would
+ * have signed and paid from an address nobody confirmed, under terms naming a
+ * different one. The executor re-reads the mode on every tool call, so both
+ * reads would have said yes.
+ */
+describe("a grant does not survive a change of operator", () => {
+  const OTHER = "0x1111111111111111111111111111111111111111";
+
+  async function granted() {
+    const { autonomyStore } = await load(ENABLED);
+    const store = autonomyStore(OPERATOR);
+    const c = store.challenge(500);
+    store.grant({ operator: c.operator, acknowledgement: c.acknowledgement, nonce: c.nonce }, 500);
+    expect(store.mode()).toBe("full");
+    return autonomyStore;
+  }
+
+  it("reads as no grant for a different operator", async () => {
+    const autonomyStore = await granted();
+    expect(autonomyStore(OTHER).read()).toBeNull();
+    expect(autonomyStore(OTHER).mode()).toBe("reads");
+  });
+
+  it("is DROPPED, not shadowed — switching back does not re-arm it", async () => {
+    const autonomyStore = await granted();
+    autonomyStore(OTHER).read();
+
+    // The case a refactor deletes. Returning null for the wrong operator while
+    // leaving the grant in place would let a switch away and back silently
+    // restore a permission the operator granted before either wallet was
+    // selected — a confirmation of nothing.
+    expect(autonomyStore(OPERATOR).read()).toBeNull();
+    expect(autonomyStore(OPERATOR).mode()).toBe("reads");
+  });
+});
+
 describe("every way it fails closed", () => {
   it("refuses a nonce it never minted", async () => {
     const { autonomyStore } = await load(ENABLED);

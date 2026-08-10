@@ -26,6 +26,11 @@ describe("the key is unreachable from the client", () => {
     ...sourceFiles(join(SRC, "components")),
     join(SRC, "lib/commands.ts"),
     join(SRC, "lib/capability.ts"),
+    // The wallet picker's type. Enrolled here for the same reason
+    // `capability.ts` is: it is produced by the module that holds the keys and
+    // consumed by a component, so the day someone "tidies" it into an import
+    // from `wallet.ts` this fails instead of shipping.
+    join(SRC, "lib/operator.ts"),
   ];
 
   for (const entry of entries) {

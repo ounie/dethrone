@@ -8,6 +8,7 @@ import {
   type Command,
   type Field,
 } from "@/lib/commands";
+import { walletKeyVars } from "@/lib/assertions";
 import { config, paidCommandsAllowedFrom } from "@/lib/config";
 import { consoleError, type ConsoleErrorCode } from "@/lib/errors";
 import { redact } from "@/lib/redact";
@@ -80,6 +81,25 @@ function fail(code: ConsoleErrorCode, detail?: Record<string, unknown>): NextRes
   return NextResponse.json(body, { status });
 }
 
+/**
+ * Every wallet key this process holds, for the redaction pass.
+ *
+ * The VALUES are read here, in the route, where the intent is visible — the
+ * same reason `wallet.ts` has never had a `getPrivateKey()`, and the reason it
+ * has no plural of one either. What comes from `assertions.ts` is the list of
+ * variable NAMES, which is also what the boot check validates and what
+ * `wallet.ts` loads. One answer to "which variables are wallet keys", so this
+ * cannot fall out of step with a wallet the console will happily sign with —
+ * which is exactly what naming the primary variable by hand did the moment a
+ * second key became possible. `test/secrets.test.ts` pins that neither
+ * redacting route goes back to naming one.
+ */
+function walletSecrets(): string[] {
+  return walletKeyVars(process.env)
+    .map((v) => process.env[v.name] ?? "")
+    .filter((s) => s.trim().length >= 8);
+}
+
 /** Query params for GET, JSON body for everything else. */
 function isQueryField(cmd: Command, field: Field): boolean {
   return cmd.method === "GET" && !cmd.path.includes(`:${field.name}`);
@@ -114,6 +134,21 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   if ((paid || signed) && !hasWallet()) return fail("CONSOLE_NO_WALLET", { id });
 
+  /*
+    Who signs, resolved ONCE for the whole request.
+
+    This used to be two separate `address()` calls — one filling the `address`
+    field's default, one computing the payer for the confirmation echo. Nothing
+    awaited between them, so they could not disagree, and a wallet switch
+    landing mid-request could not be observed. That was true by accident:
+    `POST /api/wallet` can move the selection at any moment, so the day someone
+    adds an `await` between those two lines the route fills a path with one
+    wallet's address and pays from another's, and nothing would catch it.
+
+    One read, one operator, for the rest of this handler.
+  */
+  const operator = address();
+
   if (paid) {
     // The interface pin. Fails closed on money, open on reads.
     const live = await rules();
@@ -146,7 +181,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     // The one default the console supplies, because it is not a rule: the
     // operator's own address, which the browser already knows.
-    if (!value && field.name === "address") value = address() ?? "";
+    if (!value && field.name === "address") value = operator ?? "";
 
     rawArgs[field.name] = value;
 
@@ -200,7 +235,6 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (unresolved.length > 0) return fail("CONSOLE_MISSING_FIELD", { field: unresolved[0] });
 
   // ── Cost, confirmation, ceiling ───────────────────────────────────────────
-  const operator = address();
   let cost = 0;
   let maxCents: number | null = null;
 
@@ -229,6 +263,14 @@ export async function POST(req: Request): Promise<NextResponse> {
     // is not a thing a test can assert. Above the threshold, or caller-priced
     // at any amount, this route refuses until the operator's echo matches what
     // the server independently computed.
+    //
+    // The `payer` half now also catches a wallet switched between the dialog
+    // opening and Confirm being pressed: the echo names the old address, this
+    // route recomputes the new one, and the operator gets a second 428 with the
+    // new terms. **That is correct and must not be "fixed".** The symptom is a
+    // dialog that appears not to take, and the obvious repair — making `payer`
+    // advisory, or letting the request name one — hands the choice of who pays
+    // to whatever sent the request, which is the one thing this file refuses.
     const needsConfirm = isCallerPriced(cmd) || cost > confirmOver;
     if (needsConfirm && (confirm?.amountCents !== cost || confirm?.payer !== operator)) {
       return fail("CONSOLE_CONFIRM_REQUIRED", {
@@ -246,7 +288,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     return fail("CONSOLE_CONFIRM_REQUIRED", { payer: operator, destructive: true });
   }
 
-  const store = spendStore(operator);
+  const store = spendStore();
   let reserved = false;
 
   if (paid && store.enabled) {
@@ -352,7 +394,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           : { enabled: false, reason: store.reason },
         body: result.body,
       },
-      [process.env.DETHRONE_PRIVATE_KEY ?? ""],
+      walletSecrets(),
     ),
     { status: 200 },
   );

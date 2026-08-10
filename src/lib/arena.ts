@@ -37,7 +37,7 @@ export interface ArenaResult {
 }
 
 export interface ArenaRequest {
-  method: "GET" | "POST" | "DELETE";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   /** Pathname with segments already encoded. */
   path: string;
   query?: Record<string, string>;
@@ -109,6 +109,13 @@ export async function call(req: ArenaRequest): Promise<ArenaOutcome> {
       // The local dev bypass. Gated at boot to loopback base URLs, and it
       // produces no settlement receipt — which is exactly why `settled` is
       // computed from the receipt and not from `res.ok`.
+      //
+      // This resolves the selected wallet independently of `/api/act`, which
+      // hoists one `address()` for its whole handler. They cannot disagree
+      // today (nothing awaits between the two reads on any real path) and no
+      // money moves down this branch in any case. Threading the operator
+      // through `ArenaRequest` would make the property structural rather than
+      // circumstantial, and is worth doing if this branch ever grows.
       const me = address();
       if (me) headers["x-dev-wallet"] = me;
     } else {

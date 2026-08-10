@@ -68,6 +68,28 @@ describe("the documented free-read count is the real one", () => {
   });
 });
 
+/**
+ * The wallet the masthead names is the wallet that signs.
+ *
+ * Two cheap mechanical cases, and they guard the same defect as the ones above:
+ * a fact typed once into copy, with nothing checking it. The card used to print
+ * "derived from DETHRONE_PRIVATE_KEY" as a fixed string — true while a console
+ * held one key, and a lie about the operator's own `.env.local` the moment a
+ * second one is selected. It is the variable name now, from the selected
+ * wallet.
+ */
+describe("the operator card does not hard-code which variable signs", () => {
+  it("masthead.tsx names no wallet variable literally", () => {
+    expect(file("src/components/masthead.tsx")).not.toContain("derived from DETHRONE_PRIVATE_KEY");
+  });
+
+  it(".env.local.example documents the several-wallets form", () => {
+    // The feature exists; the file a new operator copies has to say so, or the
+    // only way to discover it is reading `assertions.ts`.
+    expect(file(".env.local.example")).toMatch(/DETHRONE_PRIVATE_KEY_/);
+  });
+});
+
 describe("no prose offers a route the console cannot call", () => {
   /**
    * The excluded routes, as a reader would type them. An exclusion exists

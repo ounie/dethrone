@@ -5,6 +5,7 @@ import {
   isServerless,
   isTruthyFlag,
   resolveKvRest,
+  walletKeyVars,
   type Finding,
 } from "./assertions";
 import {
@@ -32,6 +33,7 @@ import {
 export interface ConsoleConfig {
   baseUrl: string;
   network: string;
+  /** Whether this deploy holds *at least one* wallet key. Not how many. */
   hasKey: boolean;
   maxSpendCents: number;
   confirmOverCents: number;
@@ -113,7 +115,9 @@ export function config(): ConsoleConfig {
 
   const serverless = isServerless(env);
   const kv = resolveKvRest(env);
-  const hasKey = !!env.DETHRONE_PRIVATE_KEY?.trim();
+  // At least one key. Computed from the same scan the boot check and `wallet.ts`
+  // use, so "this deploy can sign" has exactly one answer.
+  const hasKey = walletKeyVars(env).length > 0;
 
   // The ceiling is a real bound only where a single process (or a shared store)
   // observes every spend. Anywhere else it renders as "disabled" rather than as
