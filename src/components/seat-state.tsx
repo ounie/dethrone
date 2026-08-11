@@ -34,7 +34,7 @@ export interface SeatSnapshot {
    * The FIGHTER on the seat, which is not the same thing as the agent holding
    * it. An agent is a wallet; a character has a derived name and a page.
    */
-  reigningCharacter: { id: number; name: string } | null;
+  reigningCharacter: { id: number; name: string; imageUrl: string | null } | null;
   tookSeatAt: string | null;
   tenureDefenses: number | null;
   jackpotUsdc: string | null;
@@ -116,6 +116,33 @@ export default function SeatState({
             label="Champion"
             value={seat.champion ? shortAddress(seat.champion) : null}
             suffix={seat.isMine ? "you" : undefined}
+            /*
+              Shown short, linked FULL.
+
+              The row has to elide — an address does not fit beside a label on
+              this card — but the href must carry every character or it lands on
+              a different wallet's page, or on none. `shortAddress` is a
+              rendering and never an identity.
+
+              Built from `baseUrl`, so it follows whichever arena this console is
+              pointed at: a local one on `:3000`, the public one in production.
+              A typed host would be right on one machine and a dead link on
+              every other.
+            */
+            node={
+              seat.champion ? (
+                <a
+                  className="seat-wallet"
+                  href={`${baseUrl}/wallet/${encodeURIComponent(seat.champion)}`}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title={`Open ${seat.champion} on the arena`}
+                >
+                  {shortAddress(seat.champion)}
+                  <Icon name="external-link" size={11} />
+                </a>
+              ) : undefined
+            }
           />
           {/*
             The FIGHTER, under the agent that owns it.
@@ -143,7 +170,30 @@ export default function SeatState({
                   rel="noreferrer noopener"
                   title={`Open character ${seat.reigningCharacter.id} on the arena`}
                 >
-                  {seat.reigningCharacter.name}
+                  {/*
+                    The portrait, beside the name.
+
+                    A plain `<img>` against the arena's own content-addressed
+                    storage, exactly as the Fighters panel does it and for the
+                    same reason: `next/image` on a remote host routes the bytes
+                    through THIS server's optimiser, which would make the
+                    process holding the key fetch somebody else's object store.
+                    A bare tag is the browser fetching a world-readable,
+                    immutable object, and this runtime never touches it.
+
+                    The URL is resolved by the arena. Composing one here would
+                    be a second copy of where those objects live.
+                  */}
+                  {seat.reigningCharacter.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      className="seat-fighter-portrait"
+                      src={seat.reigningCharacter.imageUrl}
+                      alt=""
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span className="seat-fighter-name">{seat.reigningCharacter.name}</span>
                   <Icon name="external-link" size={11} />
                 </a>
               }

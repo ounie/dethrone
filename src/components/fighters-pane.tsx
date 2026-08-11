@@ -139,6 +139,8 @@ export default function FightersPane({
   disabled,
   sequenceLength,
   onArm,
+  onSelectedFighter,
+  forged,
   drag,
 }: {
   capabilities: Capabilities;
@@ -159,6 +161,20 @@ export default function FightersPane({
   sequenceLength: number | null;
   /** Select a catalogue command and fill its fields. Runs nothing. */
   onArm: (commandId: string, args: Record<string, string>) => void;
+  /**
+   * Which fighter this panel currently has open, as it changes.
+   *
+   * Reported so a command selected from the RAIL can default its `characterId`
+   * to the fighter already on screen — which is the prime on load, because that
+   * is what this panel opens with. It is a default and never a decision: the
+   * field stays editable, and nothing is sent until Run.
+   */
+  onSelectedFighter?: (characterId: number | null) => void;
+  /**
+   * A character this console just forged, with a nonce so the same id twice
+   * still counts. Null until something is forged.
+   */
+  forged?: { characterId: number; nonce: number } | null;
   /** Handed down by the layout so this card can be moved. */
   drag?: PanelDrag;
 }) {
@@ -179,6 +195,16 @@ export default function FightersPane({
   const [comboNote, setComboNote] = useState<string | null>(null);
   /** The portrait viewer. Memory only, and it holds no URL of its own. */
   const [viewing, setViewing] = useState(false);
+  /**
+   * A freshly forged fighter, watched until the arena stops calling it forging.
+   *
+   * `reads` is the bound. A forge that never finishes must stop asking rather
+   * than poll a paid-for character forever — the same shape, and the same
+   * argument, as the window watch below.
+   */
+  const [forging, setForging] = useState<{ id: number; state: string; reads: number } | null>(
+    null,
+  );
   /** Focused when the viewer opens: the safe choice, and here the only one. */
   const closeViewerRef = useRef<HTMLButtonElement>(null);
   const [presetNote, setPresetNote] = useState<string | null>(null);
@@ -239,6 +265,9 @@ export default function FightersPane({
     setComboNote(null);
     setPresetNote(null);
     setViewing(false);
+    // A forge watch belongs to the wallet that paid for it. Left running, it
+    // would poll the previous operator's character under the new one's name.
+    setForging(null);
   }
 
   const stable = capabilities.stable ?? { enabled: true };
@@ -324,8 +353,10 @@ export default function FightersPane({
     }
   }, []);
 
-  const choose = useCallback(async (characterId: number) => {
+  const choose = useCallback(
+    async (characterId: number) => {
     setSelected(characterId);
+    onSelectedFighter?.(characterId);
     setName(null);
     setImageUrl(null);
     // A viewer left open across a change of fighter would go on showing the
@@ -360,7 +391,9 @@ export default function FightersPane({
     } finally {
       setBusy(false);
     }
-  }, []);
+    },
+    [onSelectedFighter],
+  );
 
   /*
     Open with the roster already read and the prime already chosen.
@@ -405,6 +438,109 @@ export default function FightersPane({
       await choose(prime.characterId);
     })();
   }, [operator, stable.enabled, loadRoster, choose]);
+
+  /*
+    A forge lands, and the panel opens what it just paid for.
+
+    `POST /api/forge` answers 202 with a character that is still `forging`: the
+    row exists and the genome is decided, but the portrait has not rendered.
+    Before this, a settled forge left "No fighters" on screen beside a response
+    body naming the character it had just bought — the operator had to know to
+    press Read my stable, and nothing said so.
+
+    So the roster is re-read and the new fighter selected. That is the same read
+    the operator would make next, made for them, and it costs nothing: `stable`
+    is signed and free.
+  */
+  const forgedNonce = forged?.nonce ?? 0;
+  const forgedId = forged?.characterId ?? null;
+  useEffect(() => {
+    if (forgedId === null) return;
+    // An inline async body, like the auto-open effect below and for the same
+    // reason: the work is a sequence of reads, and its state writes belong in
+    // the continuation rather than in the effect body.
+    void (async () => {
+      await loadRoster();
+      await choose(forgedId);
+      setForging({ id: forgedId, state: "forging", reads: 0 });
+    })();
+    // Keyed on the NONCE, so forging the character you already have — which the
+    // arena answers at no charge — still re-opens it.
+  }, [forgedNonce, forgedId, loadRoster, choose]);
+
+  /*
+    Poll while the arena still calls it forging.
+
+    ## It reads the STABLE, and the first version read the character
+
+    `GET /api/character/{id}` publishes no `state` field — it answers identity,
+    traits, actions and a fight record, and nothing about where the row is in
+    its lifecycle. So `body.state` was always `undefined`, the watch fell back
+    to its own last value, and a fighter that had finished rendering sat at
+    "forging" until the bound ran out and it said "Stopped asking" over a
+    finished portrait.
+
+    Worse, the bug survived a browser test because that test STUBBED the field
+    that does not exist. The lesson is the one this repo keeps relearning: a
+    stub proves the code reads what you told it to, never that the server sends
+    it. This reads `stable`, which is where `state` actually lives, and the
+    verification below asks the real endpoint.
+
+    One read per tick does both jobs: the roster row and the watched state come
+    from the same answer, so the list cannot say `forging` beside a detail that
+    says `ready`.
+
+    The stop condition is still the arena's own word — anything that is not
+    `forging` ends the watch, including `void`, which is a forge that failed and
+    was refunded. A character that has left the stable entirely also ends it:
+    waiting for a row that is gone is waiting forever.
+  */
+  const readForge = useCallback(async () => {
+    const current = forging;
+    if (!current) return;
+
+    const data = await act("stable", {});
+    const characters = bodyOf(data)?.characters;
+    if (!Array.isArray(characters)) {
+      // A read that did not come back is not evidence of anything. Count it so
+      // the bound still applies, and try again.
+      setForging((prev) =>
+        prev && prev.id === current.id ? { ...prev, reads: prev.reads + 1 } : prev,
+      );
+      return;
+    }
+
+    const list = characters as StableFighter[];
+    setRoster(list);
+    const mine = list.find((f) => f.characterId === current.id);
+    const state = mine?.state;
+
+    if (!mine || state !== "forging") {
+      setForging(null);
+      // Re-open it, so the detail, the portrait and the menu all catch up.
+      await choose(current.id);
+      return;
+    }
+
+    setForging((prev) =>
+      prev && prev.id === current.id ? { ...prev, state, reads: prev.reads + 1 } : prev,
+    );
+  }, [forging, choose]);
+
+  const forgeRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    forgeRef.current = () => void readForge();
+  }, [readForge]);
+
+  const forgeWatchId = forging?.id ?? null;
+  const forgeWatchStopped = forging !== null && forging.reads >= QUIET_READS_BEFORE_PAUSE;
+  useEffect(() => {
+    if (forgeWatchId === null || forgeWatchStopped) return;
+    const timer = setInterval(() => forgeRef.current(), POLL_MS);
+    return () => clearInterval(timer);
+    // Keyed on the id and on whether the bound is reached — never on `forging`
+    // itself, whose `reads` changes every tick and would rebuild the timer.
+  }, [forgeWatchId, forgeWatchStopped]);
 
   // ── The window watch ──────────────────────────────────────────────────────
   //
@@ -554,6 +690,41 @@ export default function FightersPane({
           "your wallet already contains it" is literally true rather than
           encouraging.
         */}
+        {/*
+          What the panel is doing, while it is doing it.
+
+          A pane that quietly re-reads every few seconds is a pane an operator
+          cannot tell apart from a stuck one, so the watch says it is watching
+          and says when it has stopped. The STATE is the arena's word rendered
+          as it came — this console does not translate "forging" into a
+          progress bar it would have to invent a duration for.
+
+          Resuming is one press, exactly as the window watch offers.
+        */}
+        {forging && (
+          <p className="forge-watch" data-done={forging.reads >= QUIET_READS_BEFORE_PAUSE}>
+            <Icon name="hourglass" size={13} />
+            {forging.reads >= QUIET_READS_BEFORE_PAUSE ? (
+              <>
+                Character {forging.id} still reads <span className="num">{forging.state}</span>.
+                Stopped asking.{" "}
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => setForging({ id: forging.id, state: forging.state, reads: 0 })}
+                >
+                  Keep watching
+                </button>
+              </>
+            ) : (
+              <>
+                Character {forging.id} reads <span className="num">{forging.state}</span>. Re-reading
+                until the arena says otherwise — its portrait appears when the render lands.
+              </>
+            )}
+          </p>
+        )}
+
         {roster?.length === 0 && (
           <div className="roster-empty">
             <p className="muted">No fighters. Forge one — your wallet already contains it.</p>

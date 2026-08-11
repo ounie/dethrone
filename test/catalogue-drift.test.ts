@@ -3,7 +3,9 @@ import manifest from "./canon-routes.json";
 import {
   CALLER_PRICED,
   COMMANDS,
+  DUEL_STAKE_PRESET_CENTS,
   EXCLUDED_ROUTES,
+  isCallerPriced,
   pathSegments,
   scopePlaceholders,
 } from "@/lib/commands";
@@ -116,6 +118,31 @@ describe("the catalogue is internally consistent", () => {
  * That half cannot be tested — it is a reading — so the cheap half is tested
  * here and the expensive half is written down.
  */
+/**
+ * The stake presets are a suggestion, and the canon is what bounds them.
+ *
+ * They live in `commands.ts` because it is the only file under `src/` allowed a
+ * currency literal — which means this is the only place they can be checked
+ * against the command they belong to.
+ */
+describe("the duel stake presets", () => {
+  it("are ordered, positive and distinct", () => {
+    const p = [...DUEL_STAKE_PRESET_CENTS];
+    expect(p.length).toBeGreaterThan(0);
+    expect(p.every((c) => Number.isInteger(c) && c > 0)).toBe(true);
+    expect(p).toEqual([...p].sort((a, b) => a - b));
+    expect(new Set(p).size).toBe(p.length);
+  });
+
+  it("belong to a command that actually takes a stake", () => {
+    // If `post_duel` ever stopped being caller-priced, a row of amount buttons
+    // would be offering to fill a field the arena no longer prices that way.
+    const duel = COMMANDS.find((c) => c.id === "post_duel");
+    expect(duel?.amountField).toBe("stake");
+    expect(isCallerPriced(duel!)).toBe(true);
+  });
+});
+
 describe("every command carries a description", () => {
   it("has a note", () => {
     const silent = COMMANDS.filter((c) => !c.note?.trim()).map((c) => c.id);
