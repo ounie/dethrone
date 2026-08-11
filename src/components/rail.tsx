@@ -7,14 +7,14 @@ import type { Capabilities } from "@/lib/capability";
 import { COMMANDS, GROUPS, type Command } from "@/lib/commands";
 import { money } from "@/lib/format";
 import {
-  moveTier,
-  nudgeTier,
+  moveSection,
+  nudgeSection,
   railPrefsSnapshot,
   serverRailPrefsSnapshot,
   subscribeRailPrefs,
   togglePin,
   writePrefs,
-  type Tier,
+  type SectionId,
 } from "@/lib/rail-prefs";
 
 /**
@@ -37,11 +37,16 @@ import {
  */
 
 /**
- * What each tier is called. The ORDER is the operator's — see `rail-prefs.ts` —
- * but the grouping is not: cost is the only access control in this system, so a
- * tier cannot be merged, renamed or hidden, only moved.
+ * What each section is called. The ORDER is the operator's — see
+ * `rail-prefs.ts` — but the grouping is not: cost is the only access control in
+ * this system, so a tier cannot be merged, renamed or hidden, only moved.
+ *
+ * `pinned` is a heading in the same list and is not a tier. It renders through
+ * the same component precisely so that it folds and moves like every other
+ * section rather than being a special case that quietly behaves differently.
  */
-const TIER_LABELS: Record<Tier, string> = {
+const SECTION_LABELS: Record<SectionId, string> = {
+  pinned: "Pinned",
   free: "Free reads",
   paid: "Paid writes",
   signed: "Signed — free, proves the wallet",
@@ -146,7 +151,7 @@ function RailGroup({
   onTogglePin,
   drag,
 }: {
-  tier: Command["tier"];
+  tier: SectionId;
   label: string;
   cmds: Command[];
   capabilities: Capabilities;
@@ -240,14 +245,14 @@ export default function Rail({
     railPrefsSnapshot,
     serverRailPrefsSnapshot,
   );
-  const [dragging, setDragging] = useState<Tier | null>(null);
+  const [dragging, setDragging] = useState<SectionId | null>(null);
 
   const onTogglePin = useCallback((id: string) => {
     writePrefs(togglePin(railPrefsSnapshot(), id));
   }, []);
 
   const dragFor = useCallback(
-    (tier: Tier) => ({
+    (tier: SectionId) => ({
       dragging: dragging === tier,
       onDragStart: (e: React.DragEvent) => {
         setDragging(tier);
@@ -266,79 +271,67 @@ export default function Rail({
         e.preventDefault();
         e.stopPropagation();
         // Dropped ON a group means "take its place", which is `before` it.
-        writePrefs(moveTier(railPrefsSnapshot(), dragging, tier));
+        writePrefs(moveSection(railPrefsSnapshot(), dragging, tier));
         setDragging(null);
       },
       onKeyDown: (e: React.KeyboardEvent) => {
         const dir = e.key === "ArrowUp" ? "up" : e.key === "ArrowDown" ? "down" : null;
         if (!dir) return;
         e.preventDefault();
-        writePrefs(nudgeTier(railPrefsSnapshot(), tier, dir));
+        writePrefs(nudgeSection(railPrefsSnapshot(), tier, dir));
       },
     }),
     [dragging],
   );
 
   /*
-    The pinned section, and it is ADDITIVE.
+    The shelf is ADDITIVE.
 
     A pinned command still appears under its own tier, and the tier counts still
     say how many commands exist rather than how many are unpinned. That keeps
-    cost as the grouping — `rail.tsx`'s whole argument is that the left column
-    IS the permission model — while giving the operator a shelf for the four
+    cost as the grouping — this file's whole argument is that the left column IS
+    the permission model — while giving the operator a shelf for the handful of
     endpoints they actually use.
-
-    Ids are resolved here rather than validated in `rail-prefs.ts`, so a pin for
-    a command that has since been renamed simply disappears.
   */
-  const pinnedCmds = prefs.pinned
-    .map((id) => COMMANDS.find((c) => c.id === id))
-    .filter((c): c is Command => c !== undefined);
-
   return (
     <Panel icon="book-open" title="Catalogue" className="pane-rail">
       <div className="rail">
-        {pinnedCmds.length > 0 && (
-          <section className="rail-group rail-group-pinned">
-            <h3 className="rail-group-head" data-tier="pinned">
-              <span className="rail-group-toggle" aria-hidden="true">
-                <Icon name="shield-check" size={12} />
-                <span className="rail-group-label">Pinned</span>
-                <span className="count num">{pinnedCmds.length}</span>
-              </span>
-            </h3>
-            <ul className="rail-list">
-              {pinnedCmds.map((cmd) => (
-                <CommandRow
-                  key={cmd.id}
-                  cmd={cmd}
-                  cap={capabilities[cmd.id] ?? { enabled: true }}
-                  active={cmd.id === activeId}
-                  pinned
-                  onSelect={onSelect}
-                  onTogglePin={onTogglePin}
-                />
-              ))}
-            </ul>
-          </section>
-        )}
+        {prefs.sectionOrder.map((section) => {
+          /*
+            One loop for every heading, including the shelf.
 
-        {prefs.tierOrder.map((tier) => {
-          const label = TIER_LABELS[tier];
-          const cmds = COMMANDS.filter((c) => c.tier === tier);
+            Pinned used to be rendered above this as its own block with an inert
+            header — which meant it could not fold and could not move, and it
+            was the only section on the screen that behaved differently from the
+            others for no reason an operator could see. Going through the same
+            component is what makes "like the other sections" true rather than
+            reimplemented.
+          */
+          const cmds =
+            section === "pinned"
+              ? // Ids resolved here rather than validated in `rail-prefs.ts`, so
+                // a pin for a command that has since been renamed disappears.
+                prefs.pinned
+                  .map((id) => COMMANDS.find((c) => c.id === id))
+                  .filter((c): c is Command => c !== undefined)
+              : COMMANDS.filter((c) => c.tier === section);
+
+          // An empty shelf is no heading at all. A tier with no commands is the
+          // same case and was already handled this way.
           if (cmds.length === 0) return null;
+
           return (
             <RailGroup
-              key={tier}
-              tier={tier}
-              label={label}
+              key={section}
+              tier={section}
+              label={SECTION_LABELS[section]}
               cmds={cmds}
               capabilities={capabilities}
               activeId={activeId}
               onSelect={onSelect}
               pinned={prefs.pinned}
               onTogglePin={onTogglePin}
-              drag={dragFor(tier)}
+              drag={dragFor(section)}
             />
           );
         })}

@@ -30,17 +30,36 @@ export type Tier = Command["tier"];
 
 export const TIERS: readonly Tier[] = ["free", "paid", "signed"] as const;
 
-/** Ships free-first, which is the order the catalogue was written in. */
-export const DEFAULT_TIER_ORDER: readonly Tier[] = ["free", "paid", "signed"] as const;
+/**
+ * A heading in the rail: the three price tiers, plus the pinned shelf.
+ *
+ * `pinned` is in the ORDER but is not a tier, and the distinction is the point.
+ * Cost is the only access control in this system, so the three tiers are the
+ * permission model rendered and can never be merged, renamed or hidden. The
+ * shelf is a shortcut over the same commands — it holds no command that is not
+ * also under its own tier — so it can sit anywhere in the column without
+ * claiming anything about price.
+ */
+export type SectionId = Tier | "pinned";
+
+export const SECTIONS: readonly SectionId[] = ["pinned", "free", "paid", "signed"] as const;
+
+/** Pinned on top, then the order the catalogue was written in. */
+export const DEFAULT_SECTION_ORDER: readonly SectionId[] = [
+  "pinned",
+  "free",
+  "paid",
+  "signed",
+] as const;
 
 export interface RailPrefs {
-  tierOrder: Tier[];
+  sectionOrder: SectionId[];
   /** Command ids, in the order they were pinned. */
   pinned: string[];
 }
 
 export const DEFAULT_PREFS: RailPrefs = {
-  tierOrder: [...DEFAULT_TIER_ORDER],
+  sectionOrder: [...DEFAULT_SECTION_ORDER],
   pinned: [],
 };
 
@@ -49,18 +68,26 @@ const KEY = "dethrone.console.rail.v1";
 /** A pin is a shortcut, not a workspace. Past this it stops being one. */
 export const MAX_PINNED = 12;
 
-function isTier(value: unknown): value is Tier {
-  return typeof value === "string" && (TIERS as readonly string[]).includes(value);
+function isSection(value: unknown): value is SectionId {
+  return typeof value === "string" && (SECTIONS as readonly string[]).includes(value);
 }
 
 /**
  * Coerce anything into a complete, duplicate-free set of preferences.
  *
  * The property that matters is the same one `layout.ts#normalise` guards: a
- * tier missing from storage — because it was added in a later release — is
- * appended rather than dropped, so a whole class of commands cannot become
- * invisible to somebody who arranged their rail before it existed. That is the
- * failure this function is for; the parsing is incidental.
+ * section missing from storage — because it was added in a later release — is
+ * restored rather than dropped, so a whole class of commands cannot become
+ * invisible to somebody who arranged their rail before it existed.
+ *
+ * A missing section is inserted at its DEFAULT INDEX rather than appended.
+ * `pinned` was added after `tierOrder` shipped, and appending would have moved
+ * every existing operator's shelf to the bottom of the column — a preference
+ * nobody expressed, applied silently on upgrade. At its default index it lands
+ * back on top, where it has always been.
+ *
+ * `tierOrder` is still read, because that is what the shipped key holds. An
+ * operator who put paid writes first keeps them first.
  *
  * Pinned ids are NOT validated against the catalogue here, because this module
  * would then need to import it as a value and the catalogue is the larger
@@ -68,13 +95,23 @@ function isTier(value: unknown): value is Tier {
  * find, which handles a renamed command the same way.
  */
 export function normalisePrefs(value: unknown): RailPrefs {
-  const raw = (value ?? {}) as Partial<Record<keyof RailPrefs, unknown>>;
+  const raw = (value ?? {}) as Record<string, unknown>;
 
-  const order: Tier[] = [];
-  for (const t of Array.isArray(raw.tierOrder) ? raw.tierOrder : []) {
-    if (isTier(t) && !order.includes(t)) order.push(t);
+  const stored = Array.isArray(raw.sectionOrder)
+    ? raw.sectionOrder
+    : Array.isArray(raw.tierOrder)
+      ? raw.tierOrder
+      : [];
+
+  const order: SectionId[] = [];
+  for (const t of stored) {
+    if (isSection(t) && !order.includes(t)) order.push(t);
   }
-  for (const t of DEFAULT_TIER_ORDER) if (!order.includes(t)) order.push(t);
+  for (const section of DEFAULT_SECTION_ORDER) {
+    if (order.includes(section)) continue;
+    const at = DEFAULT_SECTION_ORDER.indexOf(section);
+    order.splice(Math.min(at, order.length), 0, section);
+  }
 
   const pinned: string[] = [];
   for (const id of Array.isArray(raw.pinned) ? raw.pinned : []) {
@@ -82,7 +119,7 @@ export function normalisePrefs(value: unknown): RailPrefs {
     if (pinned.length >= MAX_PINNED) break;
   }
 
-  return { tierOrder: order, pinned };
+  return { sectionOrder: order, pinned };
 }
 
 export function loadPrefs(): RailPrefs {
@@ -96,26 +133,34 @@ export function loadPrefs(): RailPrefs {
   }
 }
 
-/** Move a tier one place. Returns the SAME object at an edge, so a caller can tell. */
-export function nudgeTier(prefs: RailPrefs, tier: Tier, direction: "up" | "down"): RailPrefs {
-  const from = prefs.tierOrder.indexOf(tier);
+/** Move a section one place. Returns the SAME object at an edge, so a caller can tell. */
+export function nudgeSection(
+  prefs: RailPrefs,
+  section: SectionId,
+  direction: "up" | "down",
+): RailPrefs {
+  const from = prefs.sectionOrder.indexOf(section);
   if (from === -1) return prefs;
   const to = from + (direction === "up" ? -1 : 1);
-  if (to < 0 || to >= prefs.tierOrder.length) return prefs;
-  const next = [...prefs.tierOrder];
+  if (to < 0 || to >= prefs.sectionOrder.length) return prefs;
+  const next = [...prefs.sectionOrder];
   next.splice(from, 1);
-  next.splice(to, 0, tier);
-  return { ...prefs, tierOrder: next };
+  next.splice(to, 0, section);
+  return { ...prefs, sectionOrder: next };
 }
 
-/** Drop `tier` in front of `before`, or at the end. The pointer path. */
-export function moveTier(prefs: RailPrefs, tier: Tier, before: Tier | null): RailPrefs {
-  if (!prefs.tierOrder.includes(tier)) return prefs;
-  const next = prefs.tierOrder.filter((t) => t !== tier);
+/** Drop `section` in front of `before`, or at the end. The pointer path. */
+export function moveSection(
+  prefs: RailPrefs,
+  section: SectionId,
+  before: SectionId | null,
+): RailPrefs {
+  if (!prefs.sectionOrder.includes(section)) return prefs;
+  const next = prefs.sectionOrder.filter((t) => t !== section);
   const at = before ? next.indexOf(before) : -1;
-  if (at === -1) next.push(tier);
-  else next.splice(at, 0, tier);
-  return { ...prefs, tierOrder: next };
+  if (at === -1) next.push(section);
+  else next.splice(at, 0, section);
+  return { ...prefs, sectionOrder: next };
 }
 
 /**
