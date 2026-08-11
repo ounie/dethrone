@@ -24,6 +24,24 @@
  * `src/components/**` hold none.
  */
 
+/**
+ * One-tap stake amounts for a duel, in cents.
+ *
+ * They live HERE because this is the only file under `src/` permitted a
+ * currency literal, and `command-pane.tsx` — which renders them — is not. That
+ * is not a technicality to route around: the rule exists so that every number
+ * a browser shows can be traced to one place, and a hand-typed array of amounts
+ * in a component is precisely the thing it forbids.
+ *
+ * **A convenience, never a constraint.** The stake field stays free-form,
+ * because the arena accepts any amount between its floor and its ceiling and a
+ * preset that narrowed that would be this console holding a rule it does not
+ * own. They are also FILTERED at render against the live range from
+ * `GET /api/rules`, so a deploy with a tighter band never offers a button that
+ * would be refused — the canon bounds them, this list only suggests.
+ */
+export const DUEL_STAKE_PRESET_CENTS: readonly number[] = [100, 500, 1000, 5000];
+
 /** The default ceiling for one sitting, in cents. Overridden by CONSOLE_MAX_SPEND_CENTS. */
 export const DEFAULT_MAX_SPEND_CENTS = 500;
 
@@ -52,7 +70,17 @@ export const CALLER_PRICED = -1;
  * legal menu is a pure function of a fighter's genome, so the field has to go
  * and fetch it before it can offer anything.
  */
-export type FieldKind = "text" | "number" | "select" | "boolean" | "actions";
+/**
+ * `arena` is a select whose OPTIONS COME FROM THE ARENA, not from this file.
+ *
+ * The eight are the canon's list and it changes without this console being
+ * redeployed — a hard-coded enumeration here would be a second copy of game
+ * data, wrong the day one is retired or a ninth is chartered. The catalogue
+ * declares that a field NAMES an arena; `GET /api/arenas` says which ones
+ * exist; `command-pane.tsx` renders what it was handed, and falls back to a
+ * free-text box when it was handed nothing.
+ */
+export type FieldKind = "text" | "number" | "select" | "boolean" | "actions" | "arena";
 
 export interface Field {
   name: string;
@@ -783,7 +811,7 @@ export const COMMANDS: readonly Command[] = [
     fields: [
       { name: "fighterA", label: "Fighter A", kind: "number" },
       { name: "fighterB", label: "Fighter B", kind: "number" },
-      { name: "arenaSlug", label: "Arena slug" },
+      { name: "arenaSlug", label: "Arena", kind: "arena" },
       {
         name: "tier",
         label: "Tier",
@@ -810,7 +838,7 @@ export const COMMANDS: readonly Command[] = [
     requiresFlag: "duels",
     fields: [
       { name: "characterId", label: "Character id", kind: "number" },
-      { name: "arenaSlug", label: "Arena slug" },
+      { name: "arenaSlug", label: "Arena", kind: "arena" },
       {
         name: "stake",
         label: "Stake (cents)",

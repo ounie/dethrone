@@ -226,6 +226,56 @@ function mentions(node: ts.Node, name: string): boolean {
   return found;
 }
 
+/**
+ * The forge watch reads the field that exists.
+ *
+ * A forged fighter came back `ready` on the arena and sat at "forging" in the
+ * console until the watch gave up — because it polled `GET /api/character/{id}`
+ * for a `state` that route does not publish. `body.state` was `undefined` on
+ * every tick, the watch kept its own last value, and the bound eventually
+ * printed "Stopped asking" over a finished portrait.
+ *
+ * It survived a browser check because that check stubbed the missing field. So
+ * this is a source assertion rather than a behavioural one: the point is WHICH
+ * ENDPOINT is asked, and no amount of exercising a fake can answer that.
+ * `test/live/` is where the real shape is confirmed.
+ */
+describe("the forge watch asks the endpoint that carries a state", () => {
+  const watchBody = () => {
+    let found: string | null = null;
+    const source = read(PANE);
+    visitFile(PANE, (node) => {
+      if (!ts.isCallExpression(node)) return;
+      if (!ts.isIdentifier(node.expression) || node.expression.text !== "useCallback") return;
+      const [body] = node.arguments;
+      if (!body || !mentions(body, "setForging")) return;
+      if (!mentions(body, "act")) return;
+      found = source.slice(body.pos, body.end);
+    });
+    return found ?? "";
+  };
+
+  it("polls the Stable", () => {
+    expect(watchBody(), "no forge-watch callback found").not.toBe("");
+    expect(watchBody()).toContain('act("stable"');
+  });
+
+  it("does not poll the character route for a state it does not publish", () => {
+    // `/api/character/{id}` answers identity, traits, actions and a record —
+    // and no lifecycle state. Asking it for one reads `undefined` forever.
+    expect(watchBody()).not.toMatch(/act\(\s*["'`]character["'`]/);
+  });
+
+  it("stops on anything that is not forging, rather than waiting for `ready`", () => {
+    /*
+      A forge can also end `void` — failed and refunded. Waiting specifically
+      for `ready` would poll a refunded forge until the bound, then claim it was
+      still forging.
+    */
+    expect(watchBody()).toMatch(/!==\s*["'`]forging["'`]/);
+  });
+});
+
 describe("the panel does not carry one wallet's Stable into another's", () => {
   it("takes the operator as a prop", () => {
     // Never rendered. It is here so the panel can notice the wallet changed.
@@ -237,11 +287,15 @@ describe("the panel does not carry one wallet's Stable into another's", () => {
     visitFile(PANE, (node) => {
       if (!ts.isCallExpression(node)) return;
       if (!ts.isIdentifier(node.expression) || node.expression.text !== "useEffect") return;
-      // The auto-open effect, identified by what it calls rather than by
-      // position — a reorder must not quietly move this assertion onto the
-      // window-watch effect, which has nothing to do with wallets.
+      /*
+        The auto-open effect, identified by the ref that makes it once-per-
+        wallet — not merely by calling `loadRoster`, which the FORGE watch also
+        does. Keying on `loadRoster` alone silently moved this assertion onto
+        the forge effect the day that was added, and the forge effect has no
+        business depending on `operator`.
+      */
       const [body, deps] = node.arguments;
-      if (!body || !mentions(body, "loadRoster")) return;
+      if (!body || !mentions(body, "openedFor")) return;
       if (!deps || !ts.isArrayLiteralExpression(deps)) return;
       found = deps.elements.some((e) => ts.isIdentifier(e) && e.text === "operator");
     });

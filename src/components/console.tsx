@@ -13,7 +13,7 @@ import ResponsePane from "./response-pane";
 import SeatState, { type SeatSnapshot } from "./seat-state";
 import StandingPane from "./standing-pane";
 import type { AgentConfig, ChatEventWire } from "@/lib/agent";
-import type { Capabilities, StakeRange } from "@/lib/capability";
+import type { ArenaChoice, Capabilities, StakeRange } from "@/lib/capability";
 import type { Standing } from "@/lib/standing";
 import type { Envelope } from "@/lib/envelope";
 import { byId, COMMANDS, type Command } from "@/lib/commands";
@@ -37,6 +37,23 @@ import { logTime } from "@/lib/format";
 
 const FIRST = COMMANDS[0];
 
+/**
+ * The fields a freshly chosen command starts with.
+ *
+ * Exactly one default, and only when the command asks for a character id and
+ * the Fighters panel has one open. Everything else starts empty, because
+ * everything else is either a game input or somebody else's id.
+ *
+ * Not applied to an exhibition's `fighterA` / `fighterB`: a promoter books two
+ * fighters and neither is obviously "yours", so guessing one would fill a field
+ * the operator has to check anyway.
+ */
+function seedArgs(cmd: Command, fighter: number | null): Record<string, string> {
+  if (fighter === null) return {};
+  const wantsCharacter = (cmd.fields ?? []).some((f) => f.name === "characterId");
+  return wantsCharacter ? { characterId: String(fighter) } : {};
+}
+
 export default function Console({
   operator,
   baseUrl,
@@ -44,6 +61,7 @@ export default function Console({
   agent,
   forgeNote,
   stakeRange,
+  arenas,
   sequenceLength,
   ceiling,
   wallet,
@@ -57,6 +75,8 @@ export default function Console({
   agent: AgentConfig;
   forgeNote: string | null;
   stakeRange: StakeRange;
+  /** Every arena the canon publishes, for the fields that name one. */
+  arenas: readonly ArenaChoice[];
   /** The canon's published sequence length, or null if it publishes none. */
   sequenceLength: number | null;
   ceiling: Ceiling;
@@ -72,6 +92,19 @@ export default function Console({
   const [envelope, setEnvelope] = useState<Envelope | null>(null);
   const [log, setLog] = useState<LogRow[]>([]);
   const [busy, setBusy] = useState(false);
+  /*
+    A fighter this console just forged, handed to the Fighters panel to watch.
+
+    A forge answers 202 with a character that is still `forging` — the row
+    exists, the genome is decided, the portrait is not rendered yet. Until now
+    the panel had no way to learn that, so a successful forge left "No fighters"
+    on screen beside a response body naming the character it had just paid for.
+
+    A counter rides along with the id so forging the same character twice — the
+    arena returns the one you already have, at no charge — still re-triggers the
+    watch. An id alone would compare equal and do nothing.
+  */
+  const [forged, setForged] = useState<{ characterId: number; nonce: number } | null>(null);
   const [live, setLive] = useState<Ceiling>(ceiling);
   const [pending, setPending] = useState<{
     cmd: Command;
@@ -115,6 +148,19 @@ export default function Console({
       meta: { method: string; path: string; amountCents: number | null },
     ) => {
       setEnvelope(data);
+
+      /*
+        Read off the RESPONSE, not off the command that was run.
+
+        The console does not decide that a forge happened; the arena says so, by
+        answering with a character id. That keeps this a rendering rather than
+        an inference — an envelope with no character is simply not a forge to
+        watch, whatever was pressed.
+      */
+      const forgedId = (data.body as { characterId?: unknown } | undefined)?.characterId;
+      if (typeof forgedId === "number") {
+        setForged((prev) => ({ characterId: forgedId, nonce: (prev?.nonce ?? 0) + 1 }));
+      }
       if (data.ceiling?.enabled) {
         setLive((prev) => ({
           ...prev,
@@ -156,6 +202,23 @@ export default function Console({
     has.
   */
   const [armedAt, setArmedAt] = useState(0);
+
+  /*
+    The fighter the Fighters panel has open, so a command chosen from the RAIL
+    can start with it filled in.
+
+    That panel opens on the PRIME — one per wallet, forever, the fighter the
+    wallet's own address derives to — so "the selected fighter, or the prime" is
+    one value rather than two: the prime IS the selection until somebody picks
+    another.
+
+    A DEFAULT, never a decision. `/api/act` supplies exactly one of these today
+    and states the rule: the operator's own address, "because it is not a rule".
+    A character id this wallet owns is the same kind of fact. The field stays
+    editable, an armed command still overrides it, and nothing is sent until Run.
+  */
+  const [openFighter, setOpenFighter] = useState<number | null>(null);
+
 
   /** A proposal, accepted. Pre-fills the form; it does not run anything. */
   const loadCommand = useCallback((commandId: string, next: Record<string, string>) => {
@@ -298,7 +361,10 @@ export default function Console({
             activeId={active.id}
             onSelect={(cmd) => {
               setActive(cmd);
-              setArgs({});
+              // Cleared deliberately — a stale field left over from the
+              // previous command is a wrong request — and then seeded with the
+              // one default this console supplies.
+              setArgs(seedArgs(cmd, openFighter));
             }}
           />
         }
@@ -323,6 +389,7 @@ export default function Console({
               args={args}
               busy={busy}
               stakeRange={stakeRange}
+              arenas={arenas}
               forgeNote={forgeNote}
               sequenceLength={sequenceLength}
               armedAt={armedAt}
@@ -346,6 +413,8 @@ export default function Console({
               disabled={busy}
               sequenceLength={sequenceLength}
               onArm={loadCommand}
+              onSelectedFighter={setOpenFighter}
+              forged={forged}
             />
           ),
           response: (drag) => <ResponsePane envelope={envelope} drag={drag} />,

@@ -36,4 +36,21 @@ export interface StakeRange {
   enabled: boolean;
   minStakeCents: number | null;
   maxStakeCents: number | null;
+  /** The arena's own sentence about the rake. Rendered verbatim or not at all. */
+  note: string | null;
+}
+
+/**
+ * One arena a field may name, as the canon published it.
+ *
+ * Client-safe and value-free, like everything else in this module: the list is
+ * read on the server and rendered in the browser, and neither end holds a copy
+ * of the eight.
+ */
+export interface ArenaChoice {
+  slug: string;
+  /** The arena's own display name. Never composed from the slug here. */
+  displayName: string;
+  /** Whether the cycle is currently running in it. A label, never a filter. */
+  running: boolean;
 }

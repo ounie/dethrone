@@ -1004,6 +1004,103 @@ code {
  * it — a heading with its own padding would leave a dead strip beside the
  * clickable area, which reads as a broken target rather than a margin.
  */
+/* The pinned shelf. Gilt rather than a tier colour: it is not a price band, and
+   giving it teal or ember would put a fourth meaning on the two hues that carry
+   the access model. */
+.rail-group-pinned .rail-group-head[data-tier="pinned"] {
+  color: var(--gold-300);
+  border-color: color-mix(in srgb, var(--gold-400) 30%, transparent);
+}
+
+/* Flex, not a positioned overlay. The first version floated the pin over the
+   row's right edge and it landed on top of the PRICE — the one thing on a
+   catalogue row that must never be obscured. It takes its own column now, and
+   keeps that column even while invisible so hovering a row does not shift the
+   path under the pointer. */
+.rail-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+/* `width: auto` is load-bearing: `.cmd` is declared `width: 100%`, which in a
+   flex row claims the whole line and wraps the pin onto a second one — the pin
+   then sat under the method column instead of beside the price. */
+.rail-row > .cmd {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+/* A disabled command's reason takes the full width beneath both. */
+.rail-row > .rail-reason {
+  flex-basis: 100%;
+}
+
+/* Appears on hover or focus, so the catalogue is not a column of stars at rest.
+   A pinned one stays visible — otherwise the only way to see what is pinned is
+   to hover every row. */
+.rail-pin {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.rail-row:hover .rail-pin,
+.rail-pin:focus-visible,
+.rail-pin[data-pinned="true"] {
+  opacity: 1;
+}
+
+.rail-pin[data-pinned="true"] {
+  color: var(--gold-300);
+}
+
+.rail-pin:focus-visible {
+  outline: 2px solid var(--border-gilt);
+  outline-offset: 1px;
+}
+
+/* The group grip. Same treatment as a panel's: hidden until the header is
+   hovered or it is focused. */
+.rail-group-grip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 2px 0 0;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.rail-group-head:hover .rail-group-grip,
+.rail-group-grip:focus-visible {
+  opacity: 1;
+}
+
+.rail-group-grip:focus-visible {
+  outline: 2px solid var(--border-gilt);
+  outline-offset: 1px;
+  border-radius: var(--radius-xs);
+}
+
+.rail-group[data-dragging="true"] {
+  opacity: 0.5;
+}
+
 .rail-group-head {
   margin: 0 0 var(--s1);
   border-radius: var(--radius-xs);
@@ -1303,6 +1400,50 @@ code {
 .wallet-select:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* The arena select. Shares the field chrome; named so a test can find it and
+   so the fallback text input is visibly a different control. */
+/* One-tap stakes. Teal, not ember: pressing one fills a field and settles
+   nothing — the Run button below is still the only thing that moves money, and
+   a row of ember chips above it would be four more claims to that meaning. */
+.stake-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.stake-preset {
+  padding: 5px 10px;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-display);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.stake-preset:hover:not(:disabled) {
+  border-color: var(--teal-500);
+}
+
+.stake-preset[data-chosen="true"] {
+  border-color: var(--teal-400);
+  color: var(--teal-400);
+}
+
+.stake-preset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.arena-select {
+  width: 100%;
 }
 
 .field-hint {
@@ -2014,6 +2155,27 @@ code {
 /* The empty Stable, and the one thing to do about it. No hairline and no top
    border: `.arm-row` earns those by sitting under a fighter's detail, and here
    there is nothing above to be separated from. */
+/* The forge watch. Amber is reserved for "a guard is off", so this is teal: a
+   free read repeating while something the operator paid for finishes, with
+   nothing at stake. Goes muted once it has stopped asking. */
+.forge-watch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid color-mix(in srgb, var(--teal-400) 35%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--teal-400);
+  font-size: 11.5px;
+}
+
+.forge-watch[data-done="true"] {
+  border-color: var(--border-hairline);
+  color: var(--text-faint);
+}
+
 .roster-empty {
   display: flex;
   flex-direction: column;
@@ -2473,6 +2635,78 @@ code {
 .seat-rows {
   position: relative;
   z-index: 1;
+}
+
+/* The reigning fighter: a portrait, its name, and a way out to its own page.
+ *
+ * The NAME is parchment, not a link colour. There was no rule for this anchor
+ * at all, so it rendered in the browser's default blue and then its visited
+ * purple — two cool hues on a screen whose whole argument rests on colour
+ * meaning something, and the most prominent thing in the card was its least
+ * important property. A fighter's name is a value like every other value here.
+ *
+ * The affordance is carried by the glyph and by an underline on hover, which is
+ * enough on a row that already has a cursor change and a title. */
+/* The champion's wallet, linked to its page on the arena. Same treatment as the
+   fighter beneath it: the value keeps the parchment every other value has, and
+   the glyph carries the affordance. */
+.seat-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-display);
+  text-decoration: none;
+}
+
+.seat-wallet:hover,
+.seat-wallet:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.seat-wallet > svg {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.seat-fighter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-display);
+  text-decoration: none;
+  min-width: 0;
+}
+
+.seat-fighter-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seat-fighter:hover .seat-fighter-name,
+.seat-fighter:focus-visible .seat-fighter-name {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.seat-fighter > svg {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+/* Gilt-framed and small: it is an identifying mark on a readout row, not a
+   picture. `object-position: top` keeps the face when the crop is tight, the
+   same choice the roster thumbnails make. */
+.seat-fighter-portrait {
+  flex-shrink: 0;
+  width: 22px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-gilt);
+  object-fit: cover;
+  object-position: top;
+  background: var(--bg-panel-flat);
 }
 
 /* "you", beside the champion's address. Teal: it is a fact about identity, not

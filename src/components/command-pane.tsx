@@ -5,8 +5,14 @@ import ActionPicker from "./action-picker";
 import CodeBlock from "./code-block";
 import Icon from "./icon";
 import Panel, { type PanelDrag } from "./panel";
-import type { Capability, StakeRange } from "@/lib/capability";
-import { fieldsFor, isCallerPriced, type Command, type Field } from "@/lib/commands";
+import type { ArenaChoice, Capability, StakeRange } from "@/lib/capability";
+import {
+  DUEL_STAKE_PRESET_CENTS,
+  fieldsFor,
+  isCallerPriced,
+  type Command,
+  type Field,
+} from "@/lib/commands";
 import { money } from "@/lib/format";
 
 /**
@@ -37,8 +43,39 @@ import { money } from "@/lib/format";
  */
 const ARMED_FLASH_MS = 1400;
 
-function stakeHint(cmd: Command, range: StakeRange): string | undefined {
-  if (cmd.id !== "post_duel") return undefined;
+/**
+ * The live stake range, for the field that carries the stake.
+ *
+ * ⚠️ **Gated on the field, not just the command.** It used to take only the
+ * command, and the caller applied it to every field lacking a hint of its own —
+ * so on `post_duel` the character id and the arena were both captioned with the
+ * stake's accepted range, which is a sentence about the stake printed under two
+ * fields that are not the stake. It read as a real constraint on a character
+ * id. (Note the range itself may not be written here: `currency-literals`
+ * scans comments too, and it caught this paragraph quoting one.)
+ */
+/**
+ * One-tap stake amounts, bounded by the canon.
+ *
+ * The list is `DUEL_STAKE_PRESET_CENTS` in `commands.ts` — the only file under
+ * `src/` allowed to hold a currency literal, which is why they are declared
+ * there and merely rendered here.
+ *
+ * Filtered against the live range so a button can never offer an amount the
+ * arena would refuse. A deploy that narrows its band simply shows fewer, and
+ * one that publishes no band at all shows them all rather than none: an
+ * unreachable rules read should not silently remove an affordance.
+ */
+function stakePresets(range: StakeRange): number[] {
+  const min = range.minStakeCents;
+  const max = range.maxStakeCents;
+  return DUEL_STAKE_PRESET_CENTS.filter(
+    (cents) => (min === null || cents >= min) && (max === null || cents <= max),
+  );
+}
+
+function stakeHint(cmd: Command, field: Field, range: StakeRange): string | undefined {
+  if (cmd.id !== "post_duel" || field.name !== cmd.amountField) return undefined;
   if (range.minStakeCents === null || range.maxStakeCents === null) return undefined;
   return `The arena currently accepts ${range.minStakeCents}–${range.maxStakeCents} cents.`;
 }
@@ -71,6 +108,7 @@ export default function CommandPane({
   args,
   busy,
   stakeRange,
+  arenas,
   forgeNote,
   sequenceLength,
   armedAt,
@@ -83,6 +121,8 @@ export default function CommandPane({
   args: Record<string, string>;
   busy: boolean;
   stakeRange: StakeRange;
+  /** Every arena the canon publishes. Empty means the read did not come back. */
+  arenas: readonly ArenaChoice[];
   forgeNote: string | null;
   /** The canon's published sequence length, or null. Passed straight to the picker. */
   sequenceLength: number | null;
@@ -200,7 +240,7 @@ export default function CommandPane({
         {fields.length > 0 && (
           <div className="fields">
             {fields.map((field) => {
-              const hint = field.hint ?? stakeHint(cmd, stakeRange);
+              const hint = field.hint ?? stakeHint(cmd, field, stakeRange);
               const id = `f-${cmd.id}-${field.name}`;
               return (
                 <div className="field" key={field.name}>
@@ -209,7 +249,69 @@ export default function CommandPane({
                     {field.optional && <span className="optional"> optional</span>}
                   </label>
 
-                  {field.kind === "actions" ? (
+                  {/*
+                    An arena field, when the canon told us which arenas exist.
+
+                    Falls back to the plain text input below when the list is
+                    empty — an unreachable `/api/arenas`, or duels open on a
+                    deploy whose arena read failed. `model-picker.tsx` makes the
+                    same choice for the same reason: never a silent empty
+                    dropdown, because a select with nothing in it is a field the
+                    operator cannot fill and cannot see why.
+
+                    No default is selected. Which arena to post a duel in is the
+                    operator's decision and there is no obvious answer — the
+                    running one is where the crowd is, an older one is where a
+                    grudge lives — so the placeholder asks rather than choosing.
+                  */}
+                  {/*
+                    The stake, with the published amounts as one-tap buttons.
+
+                    They set the field and nothing else — no request, no
+                    confirmation, no change to what Run will do. The amount
+                    stays typeable, because the arena takes any value in range
+                    and a preset that became a constraint would be this console
+                    narrowing a rule it does not own.
+                  */}
+                  {field.name === cmd.amountField && stakePresets(stakeRange).length > 0 && (
+                    <div className="stake-presets">
+                      {stakePresets(stakeRange).map((cents) => (
+                        <button
+                          key={cents}
+                          type="button"
+                          className="stake-preset"
+                          data-chosen={args[field.name] === String(cents)}
+                          disabled={!capability.enabled}
+                          onClick={() => onArg(field.name, String(cents))}
+                        >
+                          {money(cents)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {field.kind === "arena" && arenas.length > 0 ? (
+                    <select
+                      id={id}
+                      className="arena-select"
+                      value={args[field.name] ?? ""}
+                      disabled={!capability.enabled}
+                      aria-describedby={hint ? `${id}-hint` : undefined}
+                      onChange={(e) => onArg(field.name, e.target.value)}
+                    >
+                      <option value="">Choose an arena…</option>
+                      {arenas.map((a) => (
+                        <option key={a.slug} value={a.slug}>
+                          {a.displayName}
+                          {/* The canon's own flag, rendered. Not a filter: a
+                              duel may be posted in any arena that is not
+                              retired, and deciding otherwise here would be this
+                              console holding a rule. */}
+                          {a.running ? " — running now" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : field.kind === "actions" ? (
                     <ActionPicker
                       capacity={sequenceLength}
                       matchId={args.id ?? ""}
@@ -254,6 +356,30 @@ export default function CommandPane({
                     <p className="field-hint" id={`${id}-hint`}>
                       {hint}
                     </p>
+                  )}
+
+                  {/*
+                    The arena's own sentence about the rake, under the field
+                    that sets it.
+
+                    A SEPARATE line rather than the hint fallback: the stake
+                    field already carries its own hint from the catalogue, so a
+                    fallback would never have been reached — which it was not,
+                    until this was moved out of it.
+
+                    Rendered verbatim, and it is the whole answer to "where does
+                    my stake go". The arena's own duels page draws a live
+                    breakdown — pot, rake, purse, jackpot — by reimplementing
+                    `splitDuelSettlement` in the browser, and calls itself a
+                    mirror for doing it. This console will not hold that second
+                    implementation: rule two is that a UI which computes money
+                    will one day compute it wrong, and a preview that disagreed
+                    with the settlement would disagree on the one screen where
+                    somebody is deciding how much to risk. The canon's sentence
+                    is the honest version of the same disclosure.
+                  */}
+                  {field.name === cmd.amountField && stakeRange.note && (
+                    <p className="field-hint">{stakeRange.note}</p>
                   )}
                 </div>
               );

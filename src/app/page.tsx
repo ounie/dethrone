@@ -10,6 +10,7 @@ import { capabilities } from "@/lib/registry";
 import { rules } from "@/lib/rules";
 import { spendStore } from "@/lib/spend";
 import { signedHeaders } from "@/lib/sign";
+import type { ArenaChoice } from "@/lib/capability";
 import type { HeldTitle, Standing } from "@/lib/standing";
 import { address, hasWallet, selectedWalletId, wallets } from "@/lib/wallet";
 
@@ -253,6 +254,39 @@ async function signedRead(path: string, scope: string) {
   }
 }
 
+/**
+ * The arenas, for the fields that name one.
+ *
+ * Read rather than enumerated. `GET /api/rules` publishes only the arena the
+ * cycle is RUNNING in, and a duel may be posted in any that is not retired — so
+ * the list comes from `/api/arenas`, which is the canon's own answer to "which
+ * ones exist". A copy of the eight in this repo would be game data in a client,
+ * wrong the day one retires.
+ *
+ * Free, unauthenticated, and allowed to fail: an empty list makes the field a
+ * plain text box again, which is exactly what it was before.
+ */
+async function arenaList(): Promise<ArenaChoice[]> {
+  const read = await arena.call({ method: "GET", path: "/api/arenas", paid: false });
+  if (!read.result?.ok) return [];
+  const body = (read.result.body ?? {}) as { arenas?: unknown };
+  const rows = Array.isArray(body.arenas) ? body.arenas : [];
+  const out: ArenaChoice[] = [];
+  for (const raw of rows) {
+    const a = raw as { slug?: unknown; displayName?: unknown; running?: unknown };
+    const slug = str(a.slug);
+    if (!slug) continue;
+    out.push({
+      slug,
+      // The arena's own label, or the slug when it published none. Never a
+      // title-cased slug: that would be this console naming a place.
+      displayName: str(a.displayName) ?? slug,
+      running: a.running === true,
+    });
+  }
+  return out;
+}
+
 /** Whatever the seat read returned, labelled. Nothing derived, nothing ticked. */
 function snapshot(
   body: unknown,
@@ -282,10 +316,21 @@ function snapshot(
 
   // The fighter on the seat. Published as a pair by the arena — name and id
   // together or not at all — so a half-answer is not representable here.
-  const fighter = (seat.reigningCharacter ?? null) as { id?: unknown; name?: unknown } | null;
+  const fighter = (seat.reigningCharacter ?? null) as {
+    id?: unknown;
+    name?: unknown;
+    imageUrl?: unknown;
+  } | null;
   const reigningCharacter =
     fighter && typeof fighter.id === "number" && str(fighter.name)
-      ? { id: fighter.id, name: str(fighter.name)! }
+      ? {
+          id: fighter.id,
+          name: str(fighter.name)!,
+          // Resolved by the arena. The console never composes an asset path —
+          // a URL built here would be a second copy of where the objects live,
+          // and it would break silently the day the prefix moves.
+          imageUrl: str(fighter.imageUrl),
+        }
       : null;
 
   return {
@@ -380,6 +425,8 @@ export default async function Page() {
     str(((seatBody ?? {}) as { champion?: { wallet?: unknown } }).champion?.wallet) ?? null;
   const standing = await standingFor(me, seatBody, championWallet);
 
+  const arenas = await arenaList();
+
   const ledger = await spendStore().read();
 
   // A read of the chain, not of the canon: one `view` call, no key, no
@@ -396,6 +443,7 @@ export default async function Page() {
         agent={agent}
         forgeNote={live.forgeNote}
         stakeRange={live.duel}
+        arenas={arenas}
         sequenceLength={live.actions.sequenceLength}
         ceiling={{
           enabled: cfg.ceilingEnabled,

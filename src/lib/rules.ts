@@ -39,7 +39,19 @@ export interface Rules {
   money: Partial<Record<"forge" | "challenge" | "filmOrder", number>>;
   /** The canon's own sentence about forging, rendered verbatim where present. */
   forgeNote: string | null;
-  duel: { enabled: boolean; minStakeCents: number | null; maxStakeCents: number | null };
+  /**
+   * The stake bounds, and the arena's own sentence about what it takes.
+   *
+   * `note` is published prose about the rake, rendered verbatim: this console
+   * does not restate a money rule in words of its own any more than it computes
+   * one in arithmetic.
+   */
+  duel: {
+    enabled: boolean;
+    minStakeCents: number | null;
+    maxStakeCents: number | null;
+    note: string | null;
+  };
   /**
    * The actions layer's shape, as the canon publishes it.
    *
@@ -82,7 +94,7 @@ const UNREACHABLE: Rules = {
   interfaceMatches: true,
   money: {},
   forgeNote: null,
-  duel: { enabled: false, minStakeCents: null, maxStakeCents: null },
+  duel: { enabled: false, minStakeCents: null, maxStakeCents: null, note: null },
   actions: { sequenceLength: null, menuSize: null },
   features: {},
   arena: null,
@@ -115,7 +127,8 @@ function shape(body: unknown, interfaceVersion: string | null): Rules {
     duel: {
       enabled: duelEnabled,
       minStakeCents: num(duel.minStakeCents),
-      maxStakeCents: num(duel.maxStakeCents),
+        maxStakeCents: num(duel.maxStakeCents),
+      note: typeof duel.note === "string" && duel.note ? duel.note : null,
     },
     actions: {
       sequenceLength: num(actions.sequenceLength),
