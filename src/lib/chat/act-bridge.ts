@@ -64,6 +64,25 @@ export async function callAct(origin: Request, invocation: ActInvocation): Promi
   if (host !== null) headers.set("host", host);
   const forwarded = origin.headers.get("x-forwarded-host");
   if (forwarded !== null) headers.set("x-forwarded-host", forwarded);
+  // The session, under the same rule and for the same reason.
+  //
+  // It must be COPIED rather than omitted: `/api/act` now gates on it, so a
+  // bridge that dropped it would 401 every tool call on a password-protected
+  // deploy — and the tempting fix for that is "skip the gate when the caller is
+  // the bridge", which is a hole with a comment on it.
+  //
+  // It must be COPIED rather than synthesised, which is the same argument the
+  // Host paragraph above makes, though the danger is smaller here and it is
+  // worth being exact about why. Forging a Host grants power: it turns a
+  // reachable deploy's chat pane into a paid-command path a direct POST would
+  // have refused. Forging a session is not possible without the password, so
+  // copying is strictly safe. It is copied anyway, because "the bridge passes
+  // through what it was given and invents nothing" is the property that makes
+  // this file reviewable — and the alternative, this module asserting that
+  // `/api/chat` already checked, is precisely the mode-as-request-field mistake
+  // `execute.ts` refuses.
+  const cookie = origin.headers.get("cookie");
+  if (cookie !== null) headers.set("cookie", cookie);
 
   const url = new URL("/api/act", new URL(origin.url).origin);
   const res = await actPost(

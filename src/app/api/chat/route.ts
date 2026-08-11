@@ -7,6 +7,7 @@ import { systemPrompt } from "@/lib/chat/prompt";
 import { adapterFor, isProviderId, providerStatuses } from "@/lib/chat/providers/registry";
 import { toolsFor } from "@/lib/chat/tools";
 import { TURN_TIMEOUT_MS, type ChatEvent, type ChatTurn } from "@/lib/chat/types";
+import { authenticate } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { consoleError, type ConsoleErrorCode } from "@/lib/errors";
 import { redact } from "@/lib/redact";
@@ -130,6 +131,10 @@ function providerSecrets(): string[] {
     process.env.OPENROUTER_API_KEY,
     process.env.ANTHROPIC_API_KEY,
     process.env.OPENAI_COMPATIBLE_API_KEY,
+    // The operator's password. This is the egress that matters most for it —
+    // everything this route redacts is on its way to a third party's model, and
+    // a password that reached one is as spent as a leaked key.
+    process.env.CONSOLE_PASSWORD,
     ...walletKeyVars(process.env).map((v) => process.env[v.name]),
   ].filter((v): v is string => typeof v === "string" && v.trim().length >= 8);
 }
@@ -156,6 +161,14 @@ export async function POST(req: Request): Promise<NextResponse> {
       reason: err instanceof Error ? err.message : String(err),
     });
   }
+
+  /*
+    The door, above the parse, so it covers all three kinds this route serves.
+    `status` reports provider availability and the ceiling; `autonomy` mints a
+    grant. Neither is a thing an anonymous caller gets to touch.
+  */
+  const session = await authenticate(req);
+  if (session === "invalid") return fail("CONSOLE_UNAUTHENTICATED");
 
   const parsed = requestSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("CONSOLE_UNKNOWN_COMMAND", { reason: "malformed request" });

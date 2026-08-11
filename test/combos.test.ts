@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyCombo, comboFromPicks, removeCombo, upsertCombo, type Combo } from "@/lib/combos";
+import {
+  applyCombo,
+  comboFromPicks,
+  combosFor,
+  removeCombo,
+  upsertCombo,
+  type Combo,
+} from "@/lib/combos";
 
 /**
  * The saved-combo library, and the one bug it exists to prevent.
@@ -10,6 +17,12 @@ import { applyCombo, comboFromPicks, removeCombo, upsertCombo, type Combo } from
  * five different actions — accepted by the arena, wrong in the fight, and
  * silent until the verdict. So a combo stores action IDS and is resolved
  * against whichever menu it is applied to.
+ *
+ * A combo is also OWNED by the fighter it was built from and offered on no
+ * other. That makes the cross-fighter cases below unreachable through the UI —
+ * they are kept deliberately, because the id-not-index storage is what makes the
+ * failure visible rather than silent if the filter is ever loosened, and a test
+ * that only covers the path the UI takes cannot say that.
  */
 
 /** Two fighters. They share `bearing:*` and differ in armament, as real menus do. */
@@ -100,7 +113,80 @@ describe("the library", () => {
     expect(list.map((c) => c.name)).toEqual(["second", "opener"]);
   });
 
-  it("removes by name", () => {
-    expect(removeCombo(upsertCombo([], a), "opener")).toEqual([]);
+  it("removes by fighter and name together", () => {
+    expect(removeCombo(upsertCombo([], a), 1, "opener")).toEqual([]);
+  });
+});
+
+/**
+ * The scoping, which is the reported bug rather than a hypothetical: "combo 1"
+ * was saved from #293 and then offered on every other fighter, where three of
+ * its five actions did not exist.
+ */
+describe("a combo belongs to the fighter it was saved from", () => {
+  const onA = { ...combo(["heavy:0"]), name: "combo 1", fromCharacterId: 293 };
+  const onB = { ...combo(["reach:0"]), name: "opener", fromCharacterId: 500 };
+  const library = [onA, onB];
+
+  it("offers a combo only on its own fighter", () => {
+    expect(combosFor(library, 293)).toEqual([onA]);
+    expect(combosFor(library, 500)).toEqual([onB]);
+  });
+
+  it("offers nothing on a fighter that has none", () => {
+    expect(combosFor(library, 999)).toEqual([]);
+  });
+
+  it("offers nothing when no fighter is selected", () => {
+    // Not "everything" and not the unowned ones. There is no screen that asks
+    // for combos without a fighter, and a null resolving to some combos is how
+    // an unfitting library gets back in front of the operator.
+    expect(combosFor(library, null)).toEqual([]);
+  });
+
+  it("does not offer an unowned combo to anybody", () => {
+    const orphan = { ...combo(["heavy:0"]), fromCharacterId: null };
+    expect(combosFor([orphan], 293)).toEqual([]);
+    expect(combosFor([orphan], null)).toEqual([]);
+  });
+
+  /**
+   * The one that would bite silently. With the list filtered per fighter, a
+   * name key that ignored the fighter would mean saving "combo 1" on #500
+   * deleted the "combo 1" on #293 — an entry disappearing from a screen nobody
+   * was looking at, caused by pressing Save.
+   */
+  it("lets two fighters hold a combo of the same name", () => {
+    const sameName = { ...combo(["reach:0"]), name: "combo 1", fromCharacterId: 500 };
+    const list = upsertCombo([onA], sameName);
+
+    expect(list).toHaveLength(2);
+    expect(combosFor(list, 293)).toEqual([onA]);
+    expect(combosFor(list, 500)[0].actionIds).toEqual(["reach:0"]);
+  });
+
+  it("still replaces within one fighter", () => {
+    const list = upsertCombo([onA], { ...onA, actionIds: ["heavy:2"] });
+    expect(list).toHaveLength(1);
+    expect(list[0].actionIds).toEqual(["heavy:2"]);
+  });
+
+  it("removes one fighter's combo without touching the other's namesake", () => {
+    const sameName = { ...combo(["reach:0"]), name: "combo 1", fromCharacterId: 500 };
+    const list = [onA, sameName];
+    expect(removeCombo(list, 500, "combo 1")).toEqual([onA]);
+    expect(removeCombo(list, 293, "combo 1")).toEqual([sameName]);
+  });
+
+  /**
+   * The property the whole change buys: applied to its own fighter, a combo
+   * always fits. `missing` becomes an invariant check rather than the ordinary
+   * case it used to be.
+   */
+  it("resolves completely against the menu it was built from", () => {
+    const saved = { ...combo(comboFromPicks([2, 0, 4], HEAVY)), fromCharacterId: 293 };
+    const { picks, missing } = applyCombo(saved, HEAVY);
+    expect(missing).toEqual([]);
+    expect(picks).toEqual([2, 0, 4]);
   });
 });

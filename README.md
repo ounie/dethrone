@@ -59,7 +59,7 @@ The panel this console was missing. It opens with your Stable already read and y
 
 **And a plan waits for a window, because the arena will not take one earlier.** `POST /challenge` carries a character id and nothing else: selection was moved out of pay time on purpose, since a challenger who picks at payment is judged against whoever holds the seat later — which may not be who they picked against. So the window opens when you are *paired*, lasts a few minutes, and is discoverable only by asking. The panel polls that free read, lights the Submit button the moment the arena reports a window, and waits for you to press it. It never fires on its own.
 
-There is no bearer token anywhere in this application. Where the reference agent uses a participant token to see its own side of a match early, this console signs `match:{id}` instead — the same capability, with no credential to store, leak, or expire.
+There is no bearer token to the arena anywhere in this application. Where the reference agent uses a participant token to see its own side of a match early, this console signs `match:{id}` instead — the same capability, with no credential to store, leak, or expire. (A hosted deploy does hold one credential of its own, the operator password behind shape E, and it is never sent anywhere: it opens this console's own door and nothing else.)
 
 **The agent's tools are this table, generated.** Not a parallel list that happens to match: one tool per command, derived from the same catalogue, so the tier a command sits in is the tier its tool sits in and neither can drift from the other. What the colours mean to you, they mean to it.
 
@@ -67,7 +67,7 @@ There is no bearer token anywhere in this application. Where the reference agent
 
 ## Where to run it
 
-Four shapes, in ascending order of what they ask you to trust. **The custody question is the whole decision, and it is not a hosting question:** it is whether a key that can spend your money sits in a runtime you do not control.
+Five shapes, in ascending order of what they ask you to trust. **The custody question is the whole decision, and it is not a hosting question:** it is whether a key that can spend your money sits in a runtime you do not control.
 
 | | Shape | Key lives | Who can spend | Verdict |
 |---|---|---|---|---|
@@ -75,8 +75,9 @@ Four shapes, in ascending order of what they ask you to trust. **The custody que
 | **B** | Vercel, protected | Vercel env var | You, plus anyone past the protection | **Supported**, with the conditions below. |
 | **C** | Vercel, public, no key | Nowhere | Nobody | **Encouraged.** A spectator deploy. |
 | **D** | Vercel, public, key set | Vercel env var | The internet | **Barred.** The console refuses to build. |
+| **E** | Hosted container (Railway et al.), password | The platform's env var | You, plus anyone with the password | **Supported**, with the conditions below. |
 
-**Two things about the agent follow from this table rather than being decided separately.** Claude on your own subscription needs a machine to spawn a process on and credentials on disk to inherit, so it exists in **A** and nowhere else; the other three providers work in any shape that has their key. And **full autonomy is A only** — a boot assertion refuses to start when it is set alongside a key on serverless, or alongside `CONSOLE_ALLOW_REMOTE`, because an agent that can spend behind a URL other people can reach is shape D with a language model where the timer would be.
+**Two things about the agent follow from this table rather than being decided separately.** Claude on your own subscription needs a machine to spawn a process on and credentials on disk to inherit, so it exists in **A** and nowhere else; the other three providers work in any shape that has their key. And **full autonomy is A only** — a boot assertion refuses to start when it is set alongside a key on serverless, on a detected container platform, or alongside `CONSOLE_ALLOW_REMOTE`, because an agent that can spend behind a URL other people can reach is shape D with a language model where the timer would be.
 
 ### A — local
 
@@ -108,6 +109,23 @@ No `DETHRONE_PRIVATE_KEY` at all. The console boots, registers only free command
 ### D — public with a key
 
 Not a deployment option. A URL anyone can reach that can spend a wallet is a hosted wallet with no auth. `scripts/assert-config.ts` refuses the build.
+
+### E — a hosted container, behind a password
+
+Railway, Render, Fly and their neighbours. Different from B in both directions, which is why it is its own row rather than a footnote on that one.
+
+**What is better here:** the process is long-lived, so the spend ceiling is a real bound with no KV store to configure — one container is one sitting. **What is worse:** there is no Deployment Protection. The platform gives the service a public URL the moment it is up and puts nothing whatsoever in front of it. Assertion 5's model — *the platform authenticates, and you confirm to the console that it does* — has nothing to point at.
+
+So the console holds the lock itself. `CONSOLE_PASSWORD` puts a login in front of every route and the page, and **a key on a detected platform without one fails the build**. Not the boot: `pnpm build` runs `scripts/assert-config.ts` first, so the deploy is refused before it can become a URL. That is the property assertion 5 wanted on Vercel and could only ask for politely.
+
+Four things about it:
+
+1. **The gate is in the handlers, not in middleware.** Every route authenticates above its own body parse, before the catalogue is consulted, before the wallet is read, and before anything reaches the arena — `test/session-gate.test.ts` reads the source and fails if that ordering slips. It gates free reads too, unlike the loopback check: the `signed` tier mints a signature with your key and includes a destructive command, so a gate scoped to paid commands would guard the wrong thing.
+2. **The session is stateless.** A signed cookie carrying an expiry and a nonce, and nothing else — no table, no account, no user id, no record on the server. **Changing `CONSOLE_PASSWORD` logs every browser out everywhere**, because the signing key is derived from it. That is the whole revocation story, and it is why there is nothing to clear.
+3. **Full autonomy is still refused.** A password proves a browser belongs to you. It does not supervise a machine that decides for itself when to spend, and wiring the two together would be the mistake this table exists to prevent.
+4. **One replica.** The ceiling is an in-memory counter over one process. Two replicas is two ceilings, silently. `railway.json` pins it, and scaling past one means setting `KV_REST_API_URL` and `KV_REST_API_TOKEN` first.
+
+Minimum twelve characters, refused below that — the login throttle is per-process and best-effort, a delay rather than a lockout, so the length is the part that resists a guess. And the same line B carries applies with equal force: **use a wallet that exists only for this deploy.** See [RAILWAY.md](RAILWAY.md) for the deploy itself.
 
 ---
 
@@ -223,7 +241,7 @@ your disk ──► process env ──► server-only: wallet.ts · sign.ts · p
 ## Verifying it yourself
 
 ```bash
-pnpm test          # 560+ assertions, no network — no arena, no language model
+pnpm test          # 790+ assertions, no network — no arena, no language model
 pnpm test:live     # asks the real arena whether the catalogue is still honest
 pnpm typecheck
 pnpm build && pnpm scan:bundle
@@ -239,7 +257,9 @@ What the suite actually enforces:
 | `sign` | The EIP-191 message matches the canon character for character, verified with viem against hand-written expected strings. |
 | `act-ceiling` | The ceiling refuses **before** anything leaves the process; a 409 costs nothing; a retry replays and never re-signs. |
 | `redact` | 27 specimens — seventeen that must vanish, eight that must survive, two recorded envelopes. |
-| `assertions` | All ten boot assertions across the whole key × host × VERCEL_ENV matrix. |
+| `assertions` | All thirteen boot assertions across the whole key × host × password × VERCEL_ENV matrix. |
+| `session` | A token verifies only under the password that minted it, cannot have its expiry extended, and is refused rather than thrown on when malformed. |
+| `session-gate` | Every route authenticates **above** its own body parse, `/api/act`'s gate is not nested inside its paid branch, and an unauthenticated request reaches the arena zero times. |
 | `catalogue-drift` | Every command exists on the canon, and every public route is registered or excluded **with a stated reason**. |
 | `catalogue-render` | A keyless boot renders zero clickable paid commands — asserted over the HTML, not the source. |
 | `chat-tools` | The agent's tool surface *is* the catalogue: one tool per enabled command, over every command, with no orphan either way. |
@@ -254,11 +274,11 @@ What the suite actually enforces:
 
 ## What this is not
 
-No multi-operator anything — several wallets is several keys held by one person, not several people. There is no per-wallet session, no per-wallet ceiling, and no way for two operators to hold different selections; the selection is one pointer in one process. No browser-held key, wallet-connect widget, or embedded wallet — the key is server-side in a process you own, and a browser wallet is a different product with a different threat model. No bookkeeping: the chain and the arena's own pages are the record. No token accounting either: there is no model pricing and no per-turn cost anywhere on this screen, because a second currency on a money screen is one currency too many.
+No multi-operator anything — several wallets is several keys held by one person, not several people. There is no per-wallet session, no per-wallet ceiling, and no way for two operators to hold different selections; the selection is one pointer in one process. **The password on shape E does not change this.** It is one password, not per-user credentials; the cookie behind it carries an expiry and a nonce and names no subject; there is no account, no table, and no "who is logged in" anywhere. Two people who know it are two people at one keyboard, exactly as two of your own keys are one person holding two keys. No browser-held key, wallet-connect widget, or embedded wallet — the key is server-side in a process you own, and a browser wallet is a different product with a different threat model. No bookkeeping: the chain and the arena's own pages are the record. No token accounting either: there is no model pricing and no per-turn cost anywhere on this screen, because a second currency on a money screen is one currency too many.
 
 **No scheduling.** Nothing here runs unless a person opens a turn. There is no cron, no queue, no background loop, and closing the tab ends it.
 
-This paragraph used to say "no automation" as well, and that half is no longer true — the console hosts an agent now, so here is the line as it actually stands. The agent is bounded by the same single execution path every button uses. By default it runs the free reads and nothing else, and anything that would sign or spend comes back as a **proposal** you load into the command pane and run yourself, through the same confirmation a manual command gets. Full autonomy exists, is off by default, needs an env opt-in *and* an acknowledgement the server composed, is refused outright on any deploy where the ceiling cannot bind or the host is not loopback, is capped per action as well as per sitting, is revocable in one click, and dies with the process. An agent that wants to play *unattended* still uses [`@dethrone/mcp`](https://www.npmjs.com/package/@dethrone/mcp) and its own runtime, because putting a loop behind a URL that holds a key is still option D with a timer.
+This paragraph used to say "no automation" as well, and that half is no longer true — the console hosts an agent now, so here is the line as it actually stands. The agent is bounded by the same single execution path every button uses. By default it runs the free reads and nothing else, and anything that would sign or spend comes back as a **proposal** you load into the command pane and run yourself, through the same confirmation a manual command gets. Full autonomy exists, is off by default, needs an env opt-in *and* an acknowledgement the server composed, is refused outright on any deploy where the ceiling cannot bind or the host is not loopback — including a password-protected container, because a login proves a browser is yours and does not supervise a machine — is capped per action as well as per sitting, is revocable in one click, and dies with the process. An agent that wants to play *unattended* still uses [`@dethrone/mcp`](https://www.npmjs.com/package/@dethrone/mcp) and its own runtime, because putting a loop behind a URL that holds a key is still option D with a timer.
 
 Still no strategy, and the distinction is worth keeping: the agent reads the canon and tells you what it says. It has no opponent model, no recommended stake, and no opinion this console taught it.
 

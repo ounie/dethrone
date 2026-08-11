@@ -9,6 +9,7 @@ import {
   type Field,
 } from "@/lib/commands";
 import { walletKeyVars } from "@/lib/assertions";
+import { authenticate } from "@/lib/auth";
 import { config, paidCommandsAllowedFrom } from "@/lib/config";
 import { consoleError, type ConsoleErrorCode } from "@/lib/errors";
 import { redact } from "@/lib/redact";
@@ -36,6 +37,9 @@ import { address, hasWallet } from "@/lib/wallet";
  *
  * Every refusal happens before anything leaves the process. A ceiling that
  * refuses after the request has gone is a receipt, not a seatbelt.
+ *
+ * The session check is first, above even the body parse — see its comment for
+ * why it is unconditional where the host check below is not.
  */
 
 export const runtime = "nodejs";
@@ -95,9 +99,14 @@ function fail(code: ConsoleErrorCode, detail?: Record<string, unknown>): NextRes
  * redacting route goes back to naming one.
  */
 function walletSecrets(): string[] {
-  return walletKeyVars(process.env)
-    .map((v) => process.env[v.name] ?? "")
-    .filter((s) => s.trim().length >= 8);
+  return [
+    ...walletKeyVars(process.env).map((v) => process.env[v.name] ?? ""),
+    // The operator's password. It is not a wallet key, but it is a secret this
+    // process holds and this route's refusals travel to a browser — which is the
+    // whole reason redaction exists here. A password that surfaced once in an
+    // error detail would be as spent as a leaked key.
+    process.env.CONSOLE_PASSWORD ?? "",
+  ].filter((s) => s.trim().length >= 8);
 }
 
 /** Query params for GET, JSON body for everything else. */
@@ -114,6 +123,38 @@ export async function POST(req: Request): Promise<NextResponse> {
       reason: err instanceof Error ? err.message : String(err),
     });
   }
+
+  /*
+    The door, and it is the first thing after the config check.
+
+    ## Why it is unconditional, and not `if (paid)` like the host check below
+
+    Because the host check's scope is a hole, and copying it would inherit the
+    hole. `paid` excludes the **signed** tier — which mints an EIP-191 signature
+    with the operator's key further down this handler, and which includes
+    `release`, a command the catalogue marks destructive. A gate scoped to paid
+    commands would leave the reachable hazard entirely untouched.
+
+    Free reads are gated too, and that is not merely tidiness: this handler fills
+    the operator's own address as a default, returns the ceiling block, and — the
+    part that matters — calls the arena. An unauthenticated POST must not make
+    this process issue an outbound request on someone else's behalf.
+
+    ## Why here and not lower
+
+    Above `req.json()`, so an unauthenticated caller cannot make the route buffer
+    and parse a body it will refuse. Above `byId(id)`, because a 400-vs-401 split
+    turns the catalogue into a directory anyone can enumerate. Above
+    `hasWallet()`, because `CONSOLE_NO_WALLET` tells an anonymous caller whether
+    this deploy holds a key at all, which is the single most useful bit there is.
+
+    Below `config()` on purpose: a deploy whose assertions failed must still be
+    able to say `CONSOLE_MISCONFIGURED`, and assertions 11 and 12 are what
+    guarantee a password exists in the first place. That refusal's `reason`
+    echoes assertion text, which names variables and hosts — never values.
+  */
+  const session = await authenticate(req);
+  if (session === "invalid") return fail("CONSOLE_UNAUTHENTICATED");
 
   const parsed = requestSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("CONSOLE_UNKNOWN_COMMAND", { reason: "malformed request" });
@@ -162,7 +203,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     // Assertion 3's request half — the host on THIS request, not the one the
     // process was started with.
     const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-    if (!paidCommandsAllowedFrom(host)) {
+    if (!paidCommandsAllowedFrom(host, session)) {
       return fail("CONSOLE_REMOTE_HOST", { host });
     }
   }

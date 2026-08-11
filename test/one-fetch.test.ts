@@ -35,6 +35,10 @@ const OWN_ROUTES: { path: string; why: string }[] = [
     why: "Switches which configured wallet signs for the rest of this sitting. It makes no outbound request at all, holds no key, mints no signature and cannot attach a payment — it moves a pointer in this process's memory and drops any autonomy grant on the way out, because a grant names an address in the sentence the operator read. It exists precisely so that WHICH WALLET PAYS is never a field on /api/act: anything the browser can assert, anything that can POST can assert. test/wallet-route.test.ts pins that it cannot spend, cannot reach the arena, and above all cannot reset the spend ceiling.",
   },
   {
+    path: "/api/session",
+    why: "The door, and the only route reachable without a session. It holds no wallet key, makes no outbound request of any kind, mints no signature and cannot attach a payment — it compares a submitted string against CONSOLE_PASSWORD and sets or clears a signed, stateless cookie. It qualifies under the rule above for the strongest possible reason: it cannot reach the canon because it cannot reach anything. test/session-route.test.ts pins that its refusal is identical for a wrong password, an absent one and a malformed body, that failures are throttled, and that no response body ever echoes what was submitted.",
+  },
+  {
     path: "/api/chat",
     why: "The agent's turn. It holds provider keys and calls a language model, but it reaches the canon only by invoking /api/act's own exported handler — so every gate in that file runs, in order, for every tool call. The import-graph assertion at the bottom of this file proves it structurally, and test/chat-route.test.ts pins that signed and paid tools stay proposals unless a server-held grant says otherwise.",
   },

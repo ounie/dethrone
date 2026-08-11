@@ -473,6 +473,181 @@ describe("7 — serverless without a shared store warns, and never fails", () =>
   });
 });
 
+/**
+ * The hosted-platform assertions.
+ *
+ * Every case here is gated on a variable no other fixture in this file sets —
+ * `RAILWAY_ENVIRONMENT` and friends, or `CONSOLE_PASSWORD` — which is what keeps
+ * the dozen `toEqual([])` cases above untouched. That constraint is the reason
+ * `hostedPlatform` detects the platform rather than keying off
+ * `CONSOLE_ALLOW_REMOTE`: the fixture at "accepts a remote bind when the flag is
+ * set" asserts exactly zero findings, and a refusal keyed on that flag would
+ * have broken it.
+ */
+const PASSWORD = "correct horse battery staple";
+const RAILWAY = { RAILWAY_ENVIRONMENT: "production" };
+
+describe("11 — a key on a hosted platform needs a lock this console holds", () => {
+  it("refuses a key on Railway with no password", () => {
+    expect(codes({ ...RAILWAY, DETHRONE_PRIVATE_KEY: KEY }, null)).toContain(
+      "CONSOLE_HOSTED_NO_PASSWORD",
+    );
+  });
+
+  it("names the platform, so the message is actionable", () => {
+    const finding = assertConsoleConfig({ ...RAILWAY, DETHRONE_PRIVATE_KEY: KEY }, null).find(
+      (f) => f.code === "CONSOLE_HOSTED_NO_PASSWORD",
+    );
+    expect(finding?.message).toContain("Railway");
+  });
+
+  it("accepts a key on Railway once a password is set", () => {
+    expect(
+      assertConsoleConfig({ ...RAILWAY, DETHRONE_PRIVATE_KEY: KEY, CONSOLE_PASSWORD: PASSWORD }, null),
+    ).toEqual([]);
+  });
+
+  it("says nothing about a keyless hosted deploy — there is nothing to protect", () => {
+    // Option C, on a different platform. It boots, registers only free commands,
+    // and has no wallet for anyone to reach.
+    expect(assertConsoleConfig(RAILWAY, null)).toEqual([]);
+  });
+
+  it("recognises the other platforms it claims to", () => {
+    for (const env of [
+      { RENDER: "true" },
+      { RENDER_SERVICE_ID: "srv-1" },
+      { FLY_APP_NAME: "console" },
+      { DYNO: "web.1" },
+      { RAILWAY_PROJECT_ID: "p" },
+      { RAILWAY_SERVICE_ID: "s" },
+    ]) {
+      expect(codes({ ...env, DETHRONE_PRIVATE_KEY: KEY }, null)).toContain(
+        "CONSOLE_HOSTED_NO_PASSWORD",
+      );
+    }
+  });
+
+  /**
+   * Serverless is assertions 4 and 5's case and must not also be this one. Two
+   * findings for one deployment is noise, and the Vercel fixtures above assert
+   * exactly zero findings on a correct production deploy.
+   */
+  it("does not fire on Vercel, which assertions 4 and 5 already own", () => {
+    expect(
+      codes(
+        { VERCEL: "1", VERCEL_ENV: "production", DETHRONE_PRIVATE_KEY: KEY, CONSOLE_PROTECTION_CONFIRMED: "true" },
+        null,
+      ),
+    ).toEqual([]);
+  });
+
+  /**
+   * Two independent refusals, not an exemption. A hosted deploy earns its way
+   * out of assertion 3 by having a password; without one it trips both.
+   */
+  it("does not exempt an unlocked hosted deploy from the loopback check", () => {
+    const found = codes({ ...RAILWAY, DETHRONE_PRIVATE_KEY: KEY }, "0.0.0.0");
+    expect(found).toContain("CONSOLE_HOSTED_NO_PASSWORD");
+    expect(found).toContain("CONSOLE_NOT_LOOPBACK");
+  });
+
+  it("exempts a locked hosted deploy from the loopback check", () => {
+    // A container binds 0.0.0.0 because that is the only way its proxy reaches
+    // it. Refusing over the bind would refuse the documented configuration.
+    expect(
+      assertConsoleConfig(
+        { ...RAILWAY, DETHRONE_PRIVATE_KEY: KEY, CONSOLE_PASSWORD: PASSWORD },
+        "0.0.0.0",
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("12 — a password that is set is long enough to be one", () => {
+  it("refuses a short password", () => {
+    expect(codes({ CONSOLE_PASSWORD: "hunter2" })).toContain("CONSOLE_WEAK_PASSWORD");
+  });
+
+  it("refuses a short one on a hosted deploy too, rather than being satisfied by any string", () => {
+    expect(codes({ ...RAILWAY, DETHRONE_PRIVATE_KEY: KEY, CONSOLE_PASSWORD: "short" }, null)).toEqual([
+      "CONSOLE_WEAK_PASSWORD",
+    ]);
+  });
+
+  it("says nothing about a long password on a local run", () => {
+    // Harmless and useful on a shared machine. A finding here would be the
+    // cries-wolf failure this file warns about elsewhere.
+    expect(assertConsoleConfig({ CONSOLE_PASSWORD: PASSWORD }, "127.0.0.1")).toEqual([]);
+  });
+});
+
+describe("13 — a reachable deploy we cannot prove is reachable", () => {
+  it("warns, rather than refusing, on CONSOLE_ALLOW_REMOTE with no password", () => {
+    // It cannot be a refusal: the same flag is how someone runs this on a
+    // private LAN, behind a VPN, or in front of their own authenticating proxy.
+    expect(warnings({ DETHRONE_PRIVATE_KEY: KEY, CONSOLE_ALLOW_REMOTE: "true" }, "0.0.0.0")).toEqual([
+      "CONSOLE_REMOTE_NO_PASSWORD",
+    ]);
+    expect(codes({ DETHRONE_PRIVATE_KEY: KEY, CONSOLE_ALLOW_REMOTE: "true" }, "0.0.0.0")).toEqual([]);
+  });
+
+  it("says nothing once a password is set", () => {
+    expect(
+      assertConsoleConfig(
+        { DETHRONE_PRIVATE_KEY: KEY, CONSOLE_ALLOW_REMOTE: "true", CONSOLE_PASSWORD: PASSWORD },
+        "0.0.0.0",
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not double up with assertion 11 on a known platform", () => {
+    expect(
+      warnings({ ...RAILWAY, DETHRONE_PRIVATE_KEY: KEY, CONSOLE_ALLOW_REMOTE: "true" }, null),
+    ).toEqual([]);
+  });
+});
+
+describe("full autonomy is refused on a hosted platform, password or not", () => {
+  /**
+   * The hole this closes. Before `CONSOLE_PASSWORD`, running on Railway forced
+   * `CONSOLE_ALLOW_REMOTE`, and that flag is what assertion 9 caught people
+   * with. Making the password the way in removed the need for the flag — so
+   * without the hosted branch, an agent that signs and pays unattended would
+   * have become legal on a public URL holding a key.
+   */
+  it("refuses even with a password set", () => {
+    expect(
+      codes(
+        {
+          ...RAILWAY,
+          DETHRONE_PRIVATE_KEY: KEY,
+          CONSOLE_PASSWORD: PASSWORD,
+          CONSOLE_ALLOW_FULL_AUTONOMY: "true",
+        },
+        null,
+      ),
+    ).toEqual(["CONSOLE_AUTONOMY_REMOTE"]);
+  });
+});
+
+describe("6 — a password named NEXT_PUBLIC_ is a secret in the bundle", () => {
+  /**
+   * The gap this feature opened and the same commit closed. A password has no
+   * *shape* — not 0x-hex, not sk-prefixed — so neither value test can see one,
+   * and `scan-bundle.ts` cannot either. The name is the only recognisable thing
+   * about a password, so the name is what has to catch it.
+   */
+  it("refuses a NEXT_PUBLIC_ variable named like a password", () => {
+    expect(codes({ NEXT_PUBLIC_CONSOLE_PASSWORD: PASSWORD })).toEqual(["CONSOLE_PUBLIC_SECRET"]);
+    expect(codes({ NEXT_PUBLIC_PASSPHRASE: PASSWORD })).toEqual(["CONSOLE_PUBLIC_SECRET"]);
+  });
+
+  it("still ignores a short value, so a placeholder does not cry wolf", () => {
+    expect(codes({ NEXT_PUBLIC_PASSWORD: "unset" })).toEqual([]);
+  });
+});
+
 describe("a fresh clone with no configuration at all starts", () => {
   it("produces neither failures nor warnings", () => {
     expect(assertConsoleConfig({}, "127.0.0.1")).toEqual([]);
