@@ -71,6 +71,11 @@ describe("server-only marks every module that sees a key or a network", () => {
     "lib/spend.ts",
     "lib/chain.ts",
     "lib/registry.ts",
+    // The impure half of the door. `lib/session.ts` is deliberately NOT here:
+    // it reads no environment, holds no state and imports nothing, which is what
+    // makes it a pure table-driven test — the same split, and the same reason,
+    // as `assertions.ts` against `config.ts`.
+    "lib/auth.ts",
   ];
 
   for (const file of mustBeServerOnly) {

@@ -1,12 +1,17 @@
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import Console from "@/components/console";
+import LogoutButton from "@/components/logout-button";
 import type { SeatSnapshot } from "@/components/seat-state";
 import * as arena from "@/lib/arena";
 import { explorerAddressUrl, networkKey, usdcBalance } from "@/lib/chain";
 import type { AgentConfig } from "@/lib/agent";
 import { autonomyStore } from "@/lib/chat/autonomy";
 import { providerStatuses } from "@/lib/chat/providers/registry";
+import { passwordRequired, sessionFrom } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { capabilities } from "@/lib/registry";
+import { SESSION_COOKIE } from "@/lib/session";
 import { rules } from "@/lib/rules";
 import { spendStore } from "@/lib/spend";
 import { signedHeaders } from "@/lib/sign";
@@ -360,6 +365,29 @@ function snapshot(
 
 export default async function Page() {
   const cfg = config();
+
+  /*
+    The door, above `rules()` and therefore above every outbound request.
+
+    This page issues eight arena reads before it renders. An unauthenticated
+    navigation must cause none of them — otherwise anyone who finds the URL can
+    make this process spend its own rate limit against the canon, which is an
+    amplifier rather than a disclosure but is no better for being one.
+
+    It also gates a genuine disclosure. Everything below this line is the
+    operator's: the wallet address, the USDC balance, the spend ledger, the
+    House, the standing. None of it can spend, and all of it names who is
+    running this console.
+
+    `redirect()` throws a control-flow error that Next catches. It is not inside
+    a try/catch here and must not be moved into one — a `catch` around it turns a
+    redirect into a swallowed exception and renders the page anyway.
+  */
+  if (passwordRequired()) {
+    const token = (await cookies()).get(SESSION_COOKIE)?.value;
+    if ((await sessionFrom(token)) !== "valid") redirect("/login");
+  }
+
   const live = await rules();
 
   const seatRead = await arena.call({ method: "GET", path: "/api/seat", paid: false });
@@ -496,6 +524,12 @@ export default async function Page() {
             challenge and duel — with a wallet that exists only for this console.
           </>
         )}
+        {/*
+          Only where there is a door to close. On a loopback run with no password
+          the bind is the protection, and a "Log out" that ends nothing would be
+          a control that lies about what it does.
+        */}
+        {cfg.passwordRequired ? <LogoutButton /> : null}
       </footer>
     </div>
   );

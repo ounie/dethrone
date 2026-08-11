@@ -1,6 +1,7 @@
 import "server-only";
 import {
   assertConsoleConfig,
+  hostedPlatform,
   isLoopbackHost,
   isServerless,
   isTruthyFlag,
@@ -8,6 +9,7 @@ import {
   walletKeyVars,
   type Finding,
 } from "./assertions";
+import type { SessionState } from "./session";
 import {
   DEFAULT_AUTONOMY_MAX_CENTS,
   DEFAULT_CONFIRM_OVER_CENTS,
@@ -41,6 +43,18 @@ export interface ConsoleConfig {
   allowGenesis: boolean;
   devBypass: boolean;
   serverless: boolean;
+  /**
+   * The long-lived container platform this is running on, by name, or null.
+   * Distinct from `serverless`: the process is long-lived here (so the ceiling
+   * is a real bound with no KV store) and there is no platform authentication
+   * (so `CONSOLE_PASSWORD` is mandatory alongside a key — assertion 11).
+   */
+  hostedPlatform: string | null;
+  /**
+   * Whether a password is configured. **A boolean, never the password**, for the
+   * same reason `walletKeyVars` returns names and never values.
+   */
+  passwordRequired: boolean;
   kv: { url: string; token: string } | null;
   /** False when the ceiling cannot bound a sitting. The UI says so; it never shows a number. */
   ceilingEnabled: boolean;
@@ -135,6 +149,8 @@ export function config(): ConsoleConfig {
     allowGenesis: isTruthyFlag(env.CONSOLE_ALLOW_GENESIS),
     devBypass: isTruthyFlag(env.CONSOLE_DEV_BYPASS),
     serverless,
+    hostedPlatform: hostedPlatform(env),
+    passwordRequired: !!env.CONSOLE_PASSWORD?.trim(),
     kv,
     ceilingEnabled,
     ceilingDisabledReason: ceilingEnabled
@@ -161,13 +177,40 @@ export function config(): ConsoleConfig {
  * so every paid command re-derives it from the request. This catches the
  * tunnel, the reverse proxy, and the `--hostname` overridden after boot — none
  * of which a boot-time check could ever have seen.
+ *
+ * ## Why the session is a parameter and not something this function reads
+ *
+ * It would be one line shorter to call `authenticate()` here, and that line
+ * would be a bug waiting for a reordering. A function that fetches the fact it
+ * is gating on returns `true` for a request that proved nothing, and stays safe
+ * only because some *other* file happened to run a check first — in a route
+ * whose own header says the order is load-bearing precisely because order is
+ * what people break.
+ *
+ * Passed in, a caller that has not authenticated has nothing to hand over, and
+ * `tsc` says so. It is the same doctrine as `send` taking its arguments
+ * explicitly rather than closing over the form, and as `confirmOverCents` only
+ * ever tightening: the guard does not get to take the caller's word for the
+ * thing it is guarding.
  */
-export function paidCommandsAllowedFrom(requestHost: string | null): boolean {
+export function paidCommandsAllowedFrom(
+  requestHost: string | null,
+  session: SessionState,
+): boolean {
   const cfg = config();
   if (cfg.allowRemote) return true;
   // On a managed platform the operator has already acknowledged the exposure
   // through assertions 4 and 5; loopback is meaningless there.
   if (cfg.serverless) return true;
+  // A hosted container binds `0.0.0.0` by definition, so loopback cannot be the
+  // check there either. What stands in for it is the password — demanded at boot
+  // by assertion 11, and verified on THIS request by the caller.
+  //
+  // `"not-required"` deliberately does not satisfy this branch. A hosted deploy
+  // holding a key with no password never boots, so the state is unreachable
+  // today; writing it as `=== "valid"` keeps this function correct on its own
+  // terms rather than on the strength of an assertion in another file.
+  if (cfg.hostedPlatform !== null && session === "valid") return true;
   return isLoopbackHost(requestHost);
 }
 

@@ -34,6 +34,37 @@ export const CONSOLE_ERROR_CODES = [
   "CONSOLE_PRICE_ABOVE_MAX",
   /** A paid command from a host that is not loopback, without CONSOLE_ALLOW_REMOTE. */
   "CONSOLE_REMOTE_HOST",
+  /**
+   * `CONSOLE_PASSWORD` is set on this deploy and the request carried no live
+   * session cookie. **Nothing was read, nothing was signed, and no body was
+   * parsed** — this is the first gate in every route, above the host check and
+   * above the JSON parse.
+   *
+   * Unlike `CONSOLE_REMOTE_HOST` it gates *free* commands too. The page renders
+   * the operator's address, balance and spend ledger, so an ungated read is a
+   * disclosure even where it cannot spend.
+   */
+  "CONSOLE_UNAUTHENTICATED",
+  /**
+   * A login was offered to a deploy that has no `CONSOLE_PASSWORD`. Not an
+   * error the operator can act on from the browser — it means the door is not
+   * there, and the login page redirects rather than rendering a form that
+   * cannot do anything.
+   *
+   * A separate code from `CONSOLE_COMMAND_DISABLED` because that one's English
+   * says "command", and this is not one.
+   */
+  "CONSOLE_AUTH_DISABLED",
+  /**
+   * Too many failed logins on this process. A **delay, not a lockout** — see
+   * the throttle's comment in `auth.ts`, which is per-process and explicitly
+   * not the thing resisting a guessing attack.
+   *
+   * Not `CONSOLE_SPEND_CAP`, even though both are 429: reusing a money code for
+   * a refusal that names no money is exactly the confusion this file's opening
+   * paragraph exists to prevent.
+   */
+  "CONSOLE_TOO_MANY_ATTEMPTS",
   /** The arena reports an interface this console was not written against. */
   "CONSOLE_INTERFACE_MISMATCH",
   /** This command is not registered on this deploy (e.g. genesis without the flag). */
@@ -113,6 +144,12 @@ export const CONSOLE_ERROR_STATUS: Record<ConsoleErrorCode, number> = {
   CONSOLE_SPEND_CAP: 429,
   CONSOLE_PRICE_ABOVE_MAX: 409,
   CONSOLE_REMOTE_HOST: 403,
+  // 401 and not 403, and the distinction is the useful one: 403 says "you, no",
+  // which is what CONSOLE_REMOTE_HOST means. 401 says "identify yourself and
+  // try again", which is exactly true here — the browser is one login away.
+  CONSOLE_UNAUTHENTICATED: 401,
+  CONSOLE_AUTH_DISABLED: 409,
+  CONSOLE_TOO_MANY_ATTEMPTS: 429,
   CONSOLE_INTERFACE_MISMATCH: 409,
   CONSOLE_COMMAND_DISABLED: 409,
   CONSOLE_CEILING_DISABLED: 409,
@@ -150,6 +187,12 @@ export const CONSOLE_ERROR_ENGLISH: Record<ConsoleErrorCode, string> = {
     "The arena quoted more than the maximum you set. Nothing was signed and nothing was paid.",
   CONSOLE_REMOTE_HOST:
     "Paid commands are refused off loopback. Set CONSOLE_ALLOW_REMOTE=true only if you meant this.",
+  CONSOLE_UNAUTHENTICATED:
+    "This console is password-protected and no session was presented. Log in again; nothing was read and nothing was signed.",
+  CONSOLE_AUTH_DISABLED:
+    "No password is configured on this deploy, so there is no door to open. Set CONSOLE_PASSWORD to put one there.",
+  CONSOLE_TOO_MANY_ATTEMPTS:
+    "Too many failed logins on this process. Wait, then try again — nothing is locked and the delay clears on its own.",
   CONSOLE_INTERFACE_MISMATCH:
     "The arena reports a different interface version. Reads still work; nothing will spend.",
   CONSOLE_COMMAND_DISABLED: "This command is not registered on this deploy.",

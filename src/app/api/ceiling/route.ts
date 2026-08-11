@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { authenticate } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { consoleError } from "@/lib/errors";
 import { spendStore } from "@/lib/spend";
@@ -47,6 +48,22 @@ export async function POST(req: Request): Promise<NextResponse> {
     const { status, body } = consoleError("CONSOLE_MISCONFIGURED", {
       reason: err instanceof Error ? err.message : String(err),
     });
+    return NextResponse.json(body, { status });
+  }
+
+  /*
+    The door.
+
+    This route is deliberately exempt from the host check, and the reason given
+    is that it can only ever make the console LESS able to spend. That argument
+    is about hosts and it is still sound; it was never an argument about
+    anonymity. An unauthenticated caller who can set the ceiling to one cent has
+    disabled every paid command for the sitting — a denial of service on the
+    operator's own money screen, delivered through the one control that was
+    exempted for being harmless.
+  */
+  if ((await authenticate(req)) === "invalid") {
+    const { status, body } = consoleError("CONSOLE_UNAUTHENTICATED");
     return NextResponse.json(body, { status });
   }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { autonomyStore } from "@/lib/chat/autonomy";
+import { authenticate } from "@/lib/auth";
 import { config, paidCommandsAllowedFrom } from "@/lib/config";
 import { consoleError, type ConsoleErrorCode } from "@/lib/errors";
 import { address, select, selectedWalletId, wallets } from "@/lib/wallet";
@@ -77,6 +78,17 @@ export async function POST(req: Request): Promise<NextResponse> {
     });
   }
 
+  /*
+    The door, above the parse and above both gates below.
+
+    That ordering fixes something inherited rather than merely adding to it: as
+    written, an anonymous caller learned from `CONSOLE_NO_WALLET` whether this
+    deploy holds a key, and got the configured wallets' labels, BEFORE the host
+    check ever ran. Neither is a thing to hand out.
+  */
+  const session = await authenticate(req);
+  if (session === "invalid") return fail("CONSOLE_UNAUTHENTICATED");
+
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("CONSOLE_BAD_FIELD", { field: "id" });
 
@@ -84,7 +96,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (choices.length === 0) return fail("CONSOLE_NO_WALLET");
 
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-  if (!paidCommandsAllowedFrom(host)) return fail("CONSOLE_REMOTE_HOST", { host });
+  if (!paidCommandsAllowedFrom(host, session)) return fail("CONSOLE_REMOTE_HOST", { host });
 
   const wanted = choices.find((w) => w.id === parsed.data.id);
   if (!wanted) return fail("CONSOLE_UNKNOWN_WALLET", { id: parsed.data.id });

@@ -3,15 +3,22 @@ import {
   DEFAULT_CONFIRM_OVER_CENTS,
   DEFAULT_MAX_SPEND_CENTS,
 } from "./commands";
+// One constant, and the import direction is deliberate: `session.ts` imports
+// nothing at all (it has to run on the Edge runtime, where most of this repo
+// does not), so the shared number lives there and is read here rather than the
+// other way round. It is a plain integer — nothing in this file's purity claim
+// is weakened by it.
+import { MIN_PASSWORD_LENGTH } from "./session";
 
 /**
  * The startup assertions, as a pure function.
  *
  * `assertConsoleConfig(env, host)` returns findings; it never reads
  * `process.env`, never throws, and never touches the filesystem. That is what
- * makes the whole matrix — ten assertions across key/no-key, loopback/remote,
- * and three values of `VERCEL_ENV` — a table-driven unit test with no process
- * to poison and no module cache to reset.
+ * makes the whole matrix — thirteen assertions across key/no-key,
+ * loopback/remote, password/no-password, and three values of `VERCEL_ENV` — a
+ * table-driven unit test with no process to poison and no module cache to
+ * reset.
  *
  * The impure half lives in `config.ts`, which calls this once and throws on the
  * first `fail`.
@@ -35,6 +42,26 @@ import {
  * provider cannot spend anything.** The worst case is a chat pane that renders
  * disabled with a reason, which is a working console. Refusing to boot over it
  * would make the failure worse than the fault.
+ *
+ * ## Assertions 11 to 13, and why 13 is the honest one
+ *
+ * These three arrived with `CONSOLE_PASSWORD`, and they exist because assertions
+ * 4 and 5 quietly assumed the only place this could be hosted was Vercel. On a
+ * long-lived container platform — Railway, Render, Fly — there is no Deployment
+ * Protection to acknowledge, so 5's model of "the platform authenticates and you
+ * confirm it did" has nothing to point at. 11 replaces the acknowledgement with
+ * a lock this process can actually check, and refuses without one.
+ *
+ * 12 is the same argument one level down: an unenforced minimum makes 11 a
+ * formality.
+ *
+ * 13 is the case neither can prove. A bare VPS injects no telltale variable, so
+ * `isHosted` cannot see it; all this file has is `CONSOLE_ALLOW_REMOTE`, which
+ * an operator also sets for a private LAN, a VPN, and their own authenticating
+ * proxy. **So it warns.** The rule this follows is the one assertion 3 already
+ * learned the hard way: refuse what you can prove, warn about what you cannot,
+ * and never refuse a correct configuration to catch an incorrect one that looks
+ * the same from here.
  */
 
 export type FindingLevel = "fail" | "warn";
@@ -66,8 +93,18 @@ const PROVIDER_KEY_RE = /^sk-(?:ant-|or-v1-|proj-)?[A-Za-z0-9_-]{20,}$/;
  * like. The shape test above catches the providers we know; this catches the
  * one nobody anticipated, which — per assertion 6's own test — is the case that
  * matters.
+ *
+ * `password` and `passphrase` were added with `CONSOLE_PASSWORD`, and the gap
+ * they close is worth recording because the feature opened it and the same
+ * commit shut it. An operator's password has no *shape* — it is not `0x`-hex
+ * and not `sk-`-prefixed — so neither of the two value tests above can see one,
+ * and `scripts/scan-bundle.ts` cannot either, for the same reason. A
+ * `NEXT_PUBLIC_CONSOLE_PASSWORD` would therefore have been inlined into the
+ * browser bundle and passed every check this repo has. The name is the only
+ * thing about a password that is ever recognisable, so the name is what this
+ * has to catch.
  */
-const SECRET_NAME_RE = /(?:api[_-]?key|secret[_-]?key|access[_-]?token)$/i;
+const SECRET_NAME_RE = /(?:api[_-]?key|secret[_-]?key|access[_-]?token|password|passphrase)$/i;
 
 /**
  * Which env var each chat provider needs, for assertion 10.
@@ -217,6 +254,57 @@ export function isServerless(env: EnvLike): boolean {
   return env.VERCEL === "1" || !!env.AWS_LAMBDA_FUNCTION_NAME || !!env.FUNCTIONS_WORKER_RUNTIME;
 }
 
+/**
+ * A long-lived container on a platform that gives it a public URL — Railway and
+ * its neighbours.
+ *
+ * ## Why this is a third category and not "serverless"
+ *
+ * The two differ on the one property the rest of this file reasons about. On
+ * serverless, invocations do not share memory, so the spend ceiling needs a KV
+ * store (assertion 7) — but the platform supplies the authentication, which
+ * assertion 5 makes the operator acknowledge. Here it is the other way round:
+ * the process is long-lived so the in-memory ceiling is a real bound, and there
+ * is **no platform authentication at all**. A public URL in front of a wallet,
+ * with nothing asking who is knocking.
+ *
+ * That is why assertion 11 exists and why it *refuses* rather than asking for an
+ * acknowledgement the way assertion 5 does. There is no Deployment Protection
+ * to point at, so the honest options are "the console holds the lock itself" or
+ * "do not run it here". `CONSOLE_PASSWORD` is the first one.
+ *
+ * ## Detection is by the platform's own variables
+ *
+ * Not by a flag the operator sets, because the failure this guards is *someone
+ * deployed and did not think about it* — and a flag you have to remember is no
+ * use against forgetting. Each platform below injects these into every service
+ * it runs, without being asked.
+ *
+ * The list is allowed to be incomplete, and it is worth being clear about what
+ * that costs: an unlisted platform falls through to the `CONSOLE_ALLOW_REMOTE`
+ * warning further down rather than to a refusal. That is the correct shape of
+ * the gap — this function can prove a host is public, it can never prove one is
+ * private, and a refusal on an unprovable claim is the mistake assertion 3
+ * already documents at length.
+ */
+export function hostedPlatform(env: EnvLike): string | null {
+  // Serverless is assertions 4 and 5's case, and it must not also be this one.
+  // Two findings for one deployment would be noise, and — the mechanical reason
+  // — the Vercel fixtures in `test/assertions.test.ts` assert *exactly zero*
+  // findings on a correctly configured production deploy. Overlapping here
+  // would break four of them at once.
+  if (isServerless(env)) return null;
+
+  // Railway sets all three on every service; RAILWAY_ENVIRONMENT is present
+  // even before a public domain is attached.
+  if (env.RAILWAY_ENVIRONMENT || env.RAILWAY_PROJECT_ID || env.RAILWAY_SERVICE_ID) return "Railway";
+  if (env.RENDER || env.RENDER_SERVICE_ID) return "Render";
+  if (env.FLY_APP_NAME) return "Fly.io";
+  // Heroku, and only when the operator has enabled dyno metadata.
+  if (env.DYNO) return "Heroku";
+  return null;
+}
+
 /** An https REST URL is Upstash; a redis:// URL is a TCP client we will not open. */
 export function resolveKvRest(env: EnvLike): { url: string; token: string } | null {
   const url = env.KV_REST_API_URL ?? (env.KV_URL?.startsWith("https://") ? env.KV_URL : undefined);
@@ -297,6 +385,8 @@ export function assertConsoleConfig(env: EnvLike, host: string | null): Finding[
 
   const vercelEnv = env.VERCEL_ENV;
   const onVercel = isServerless(env);
+  const hosted = hostedPlatform(env);
+  const password = env.CONSOLE_PASSWORD?.trim();
 
   // ── 3. A key off loopback needs an explicit acknowledgement ───────────────
   //
@@ -321,7 +411,17 @@ export function assertConsoleConfig(env: EnvLike, host: string | null): Finding[
   // really used, so it also catches a tunnel, a reverse proxy, and a
   // `--hostname` overridden after boot. This assertion is an early, friendlier
   // failure for the case it can prove, and nothing more.
-  if (hasKey && !onVercel && !isTruthyFlag(env.CONSOLE_ALLOW_REMOTE)) {
+  //
+  // A hosted container is excluded alongside `onVercel`, but only **once it has
+  // a password**, and that conjunction is the whole point. Such a container
+  // binds `0.0.0.0` because that is the only way its proxy can reach it, so
+  // loopback is not a property that can hold there and refusing over it would
+  // refuse the documented, correct configuration. What stands in for the bind is
+  // the lock assertion 11 demands — so a hosted deploy *without* one trips this
+  // assertion and assertion 11 both, and shape D gets two independent refusals
+  // rather than an exemption it did not earn.
+  const hostedAndLocked = hosted !== null && !!password;
+  if (hasKey && !onVercel && !hostedAndLocked && !isTruthyFlag(env.CONSOLE_ALLOW_REMOTE)) {
     const declared = host !== null && host !== undefined && host.trim() !== "";
     if (declared && isLoopbackHost(host)) {
       // Known loopback. Nothing to say.
@@ -450,11 +550,25 @@ export function assertConsoleConfig(env: EnvLike, host: string | null): Finding[
   // `CONSOLE_ALLOW_REMOTE` is included deliberately. It is the flag that turns
   // off the per-request loopback check, so it is exactly the flag that would
   // otherwise make this one vacuous.
+  //
+  // The `hosted` branch closes a hole this feature would otherwise have opened.
+  // Before `CONSOLE_PASSWORD`, running on Railway forced the operator to set
+  // `CONSOLE_ALLOW_REMOTE`, and that flag is what this assertion was catching
+  // them with. Making the password the way in removes the need for the flag —
+  // so without this branch, `CONSOLE_ALLOW_FULL_AUTONOMY` would have quietly
+  // become legal on a public URL holding a key. The password does not license
+  // that: it proves a browser belongs to the operator, and it does not supervise
+  // a machine that decides for itself when to spend.
   if (hasKey && isTruthyFlag(env.CONSOLE_ALLOW_FULL_AUTONOMY)) {
-    if (onVercel) {
+    if (onVercel || hosted !== null) {
       fail(
         "CONSOLE_AUTONOMY_REMOTE",
-        "CONSOLE_ALLOW_FULL_AUTONOMY is set on a serverless deployment that holds a key. An agent that can sign and pay without being asked, behind a URL other people can reach, is the deployment shape this console refuses to build. Run it locally.",
+        // A password does NOT soften this, and the temptation to wire it in is
+        // the reason this sentence is here. A login proves a browser belongs to
+        // the operator; it does not supervise a machine that decides for itself
+        // when to spend. The two guards answer different questions and neither
+        // substitutes for the other.
+        "CONSOLE_ALLOW_FULL_AUTONOMY is set on a hosted deployment that holds a key. An agent that can sign and pay without being asked, behind a URL other people can reach, is the deployment shape this console refuses to build — a password on the front door does not change that, because the agent is already inside it. Run it locally.",
       );
     } else if (isTruthyFlag(env.CONSOLE_ALLOW_REMOTE)) {
       fail(
@@ -494,6 +608,65 @@ export function assertConsoleConfig(env: EnvLike, host: string | null): Finding[
         );
       }
     }
+  }
+
+  // ── 11. A key on a hosted platform needs a lock this console actually holds ─
+  //
+  // The counterpart to assertion 5, and deliberately stricter than it.
+  //
+  // Assertion 5 can only ask for an *acknowledgement*, because Vercel's
+  // Deployment Protection is real authentication that this runtime has no way to
+  // read. There is no equivalent on Railway or Render: the URL is public the
+  // moment the service is up, and nothing stands in front of it. So the
+  // substitute is not a flag saying "I turned something on elsewhere" — it is a
+  // password this process can check on every request, which is the only claim it
+  // can verify for itself.
+  //
+  // Refusing rather than warning, on the same argument the file opens with: the
+  // shape being prevented is a hosted wallet with no auth, which the README bars
+  // outright as option D. Someone who genuinely wants an unlocked public wallet
+  // can still have one — by not setting a key, which is option C and boots fine.
+  if (hasKey && hosted !== null && !password) {
+    fail(
+      "CONSOLE_HOSTED_NO_PASSWORD",
+      `A key is present on ${hosted} and CONSOLE_PASSWORD is not set. This platform gives a service a public URL with no authentication in front of it, so this is a wallet anyone who finds the URL can spend. Set CONSOLE_PASSWORD to put a login on it, or remove the key and run a read-only deploy.`,
+    );
+  }
+
+  // ── 12. A password that is set is long enough to be one ───────────────────
+  //
+  // The throttle on `/api/session` is per-process and best-effort — it slows a
+  // guesser rather than stopping one — so length is the part doing the work. A
+  // refusal and not a warning because the failure is silent: a four-character
+  // password looks exactly as protected as a good one from the outside, right up
+  // until it isn't.
+  if (password && password.length < MIN_PASSWORD_LENGTH) {
+    fail(
+      "CONSOLE_WEAK_PASSWORD",
+      `CONSOLE_PASSWORD is ${password.length} characters. This is the only thing between a public URL and a wallet that can spend, and the login throttle is per-process and best-effort, so the length is what actually resists guessing. Use at least ${MIN_PASSWORD_LENGTH}.`,
+    );
+  }
+
+  // ── 13. A reachable deploy with a key and no lock, where we cannot prove it ─
+  //
+  // The honest half of assertion 11. `isHosted` recognises the platforms it
+  // knows; it cannot recognise a bare VPS, a Docker host, or a tunnel, and
+  // `CONSOLE_ALLOW_REMOTE` is the operator saying "this is reachable" in as many
+  // words.
+  //
+  // A **warning** and not a refusal, and the line is worth drawing precisely.
+  // On a known platform the URL is public by construction and a refusal is
+  // provably right. Here it is not: `CONSOLE_ALLOW_REMOTE` is also how someone
+  // runs this on a private LAN, behind a VPN, or in front of their own
+  // authenticating proxy — all of which are fine, and none of which this process
+  // can distinguish from the open internet. Refusing them all to catch the one
+  // would be the mistake assertion 3 documents at length, and the flag would get
+  // set anyway.
+  if (hasKey && hosted === null && !onVercel && isTruthyFlag(env.CONSOLE_ALLOW_REMOTE) && !password) {
+    warn(
+      "CONSOLE_REMOTE_NO_PASSWORD",
+      "CONSOLE_ALLOW_REMOTE is set with a key and no CONSOLE_PASSWORD, so the per-request loopback check is off and nothing else asks who is calling. That is correct if something in front of this — a VPN, a private network, an authenticating proxy — is doing the asking. If nothing is, set CONSOLE_PASSWORD.",
+    );
   }
 
   return findings;

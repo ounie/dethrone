@@ -12,6 +12,7 @@
     "dev": "HOST=127.0.0.1 next dev --hostname 127.0.0.1 --port 3939",
     "build": "tsx scripts/assert-config.ts && next build",
     "start": "HOST=127.0.0.1 next start --hostname 127.0.0.1 --port 3939",
+    "start:hosted": "HOST=0.0.0.0 next start --hostname 0.0.0.0 --port ${PORT:-3939}",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
