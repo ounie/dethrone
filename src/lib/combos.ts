@@ -1,7 +1,27 @@
 /**
  * Named sequences the operator saved, and the one hazard in the idea.
  *
- * ## A combo is stored by ACTION ID, never by index
+ * ## A combo belongs to the fighter it was built from
+ *
+ * `fromCharacterId` is the OWNER, and the library is filtered by it: a combo
+ * saved from #293 is offered on #293 and nowhere else.
+ *
+ * This used to be provenance only — every combo was offered on every fighter,
+ * and applying one across fighters was handled by dropping the actions that did
+ * not fit and reporting them. The mechanism was sound and the product was not.
+ * Saving "combo 1" on one fighter and then finding it under a different one,
+ * three of its five actions greyed out with a paragraph explaining why, is a
+ * library that fills with entries that do not work where they are shown. The
+ * warning was correct and still meant the panel was offering something it knew
+ * would not fit.
+ *
+ * So the id filters. It follows that a NAME is unique per fighter rather than
+ * globally — "combo 1" on #293 and "combo 1" on #500 are two different combos,
+ * and saving one must not overwrite the other. Every function below that
+ * identifies a combo therefore takes the character id alongside the name; a
+ * name on its own is not an identity here.
+ *
+ * ## A combo is still stored by ACTION ID, never by index
  *
  * This is the whole design and it is not a detail. A submitted sequence is five
  * integers, but those integers are indices **into one fighter's menu**, and a
@@ -13,13 +33,16 @@
  * That failure is silent, which is what makes it worth this much prose. The
  * indices are valid, the submission succeeds, and the first sign of trouble is a
  * verdict. So a combo stores the stable `id` of each action, and applying it
- * means looking each id up in the CURRENT fighter's menu and reporting the ones
- * that are not there.
+ * means looking each id up in the CURRENT fighter's menu.
  *
- * Partial matches are ordinary rather than exceptional: a menu is a weapon class
- * plus a bearing class, so two fighters sharing an armament share half their
- * actions. "Four of five fit this fighter" is the common case and the caller is
- * told exactly which one did not.
+ * **The owner filter does not make this redundant, and removing it would be the
+ * wrong lesson to draw.** The filter means a combo now meets the menu it was
+ * built from, so a miss should be impossible — a menu is a pure function of a
+ * genome and a genome does not change. That makes `applyCombo`'s `missing` an
+ * invariant check rather than the ordinary case it used to be: if it ever fires,
+ * the arena's menu derivation has versioned under a saved combo, and dropping
+ * the slot and saying so is still the only honest response. Storing indices
+ * would have made that same event silent and wrong instead of visible.
  *
  * ## Why this is not a standing sequence
  *
@@ -50,7 +73,16 @@ export interface Combo {
   name: string;
   /** Stable action ids, in exchange order. NOT menu indices — see the module note. */
   actionIds: string[];
-  /** Which fighter it was built from. Provenance for the operator, never a filter. */
+  /**
+   * Which fighter it was built from, and which fighter it is offered on.
+   *
+   * `null` means unowned, which this code no longer produces — `saveCurrentAsCombo`
+   * cannot run without a selected fighter, since it needs that fighter's menu to
+   * turn picks into ids. It stays in the type for data written before the field
+   * existed, and `combosFor` deliberately offers such an entry on NO fighter:
+   * an unowned combo is precisely the thing whose actions cannot be known to fit,
+   * which is what the filter exists to stop.
+   */
   fromCharacterId: number | null;
   savedAt: string;
 }
@@ -104,8 +136,28 @@ function isCombo(value: unknown): value is Combo {
     !!c &&
     typeof c.name === "string" &&
     Array.isArray(c.actionIds) &&
-    c.actionIds.every((id) => typeof id === "string")
+    c.actionIds.every((id) => typeof id === "string") &&
+    // Checked rather than assumed, because it is load-bearing now that it
+    // filters. A hand-edited store carrying a string here would compare
+    // unequal to every character id and the combo would silently never appear
+    // — a saved thing that is gone with no error, which is the worst shape a
+    // storage bug can take.
+    (typeof c.fromCharacterId === "number" || c.fromCharacterId === null)
   );
+}
+
+/**
+ * The combos belonging to one fighter.
+ *
+ * A `null` character id — no fighter selected — matches nothing rather than
+ * matching the unowned entries described on `fromCharacterId`. There is no
+ * screen that asks for combos without a fighter, and "no fighter" resolving to
+ * "some combos" is the kind of accident that puts an unfitting library back in
+ * front of the operator.
+ */
+export function combosFor(combos: readonly Combo[], characterId: number | null): Combo[] {
+  if (characterId === null) return [];
+  return combos.filter((c) => c.fromCharacterId === characterId);
 }
 
 /**
@@ -140,15 +192,31 @@ export function saveCombos(combos: Combo[]): Combo[] {
   return next;
 }
 
-/** Add or replace by name, newest first. Trimming is the caller's input policy. */
+/**
+ * Add or replace, newest first. Trimming is the caller's input policy.
+ *
+ * Replacement is keyed on the character AND the name, not the name alone. With
+ * the library filtered by fighter, a global name key would mean saving "combo 1"
+ * on one fighter silently deleted the "combo 1" belonging to another — an entry
+ * vanishing from a screen the operator was not looking at, caused by an action
+ * that said "save".
+ */
 export function upsertCombo(combos: Combo[], combo: Combo): Combo[] {
   const name = combo.name.trim().slice(0, MAX_NAME);
   if (!name || combo.actionIds.length === 0) return combos;
-  return [{ ...combo, name }, ...combos.filter((c) => c.name !== name)];
+  return [
+    { ...combo, name },
+    ...combos.filter((c) => !(c.name === name && c.fromCharacterId === combo.fromCharacterId)),
+  ];
 }
 
-export function removeCombo(combos: Combo[], name: string): Combo[] {
-  return combos.filter((c) => c.name !== name);
+/** Remove one combo, identified the same way `upsertCombo` replaces one. */
+export function removeCombo(
+  combos: Combo[],
+  characterId: number | null,
+  name: string,
+): Combo[] {
+  return combos.filter((c) => !(c.name === name && c.fromCharacterId === characterId));
 }
 
 // ---------------------------------------------------------------------------

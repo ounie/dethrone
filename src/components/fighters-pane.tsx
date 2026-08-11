@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Dialog from "./dialog";
 import Icon from "./icon";
 import Panel, { type PanelDrag } from "./panel";
@@ -10,6 +10,7 @@ import type { Capabilities } from "@/lib/capability";
 import {
   applyCombo,
   comboFromPicks,
+  combosFor,
   combosSnapshot,
   removeCombo,
   serverCombosSnapshot,
@@ -219,6 +220,19 @@ export default function FightersPane({
   const combos = useSyncExternalStore(subscribeCombos, combosSnapshot, serverCombosSnapshot);
 
   /*
+    A combo belongs to the fighter it was built from, and only that fighter is
+    offered it. `combos.ts` carries the argument; the short version is that the
+    library used to fill with entries that did not fit where they were shown,
+    and a warning explaining why is not the same thing as not showing them.
+
+    Memoized because `combosFor` filters into a fresh array. The unfiltered
+    `combos` is a `useSyncExternalStore` snapshot and must keep its identity
+    between writes — deriving from it per render is fine, handing a derived
+    array back to the store would not be.
+  */
+  const fighterCombos = useMemo(() => combosFor(combos, selected), [combos, selected]);
+
+  /*
     A Stable belongs to one wallet, and so does everything downstream of it.
 
     `router.refresh()` re-renders the server tree and deliberately KEEPS client
@@ -318,10 +332,18 @@ export default function FightersPane({
       if (!menu) return;
       const { picks: next, missing } = applyCombo(combo, menu);
       setPicks(sequenceLength === null ? next : next.slice(0, sequenceLength));
+      /*
+        This should be unreachable, and it is kept because of what it would mean
+        if it fired. A combo is only ever offered on the fighter it was saved
+        from, and a menu is a pure function of that fighter's genome — so every
+        id must resolve. A miss means the arena's menu derivation has changed
+        under a stored combo, which is exactly the moment an autofill must say
+        so rather than quietly submit a shorter plan.
+      */
       setComboNote(
         missing.length === 0
           ? null
-          : `${missing.length} of ${combo.actionIds.length} not in this fighter's menu — a menu follows the genome, so a combo does not carry across every fighter. Missing: ${missing.join(", ")}.`,
+          : `${missing.length} of ${combo.actionIds.length} no longer exist in this fighter's menu, so those slots were left empty. The arena's action list has changed since this combo was saved. Missing: ${missing.join(", ")}.`,
       );
     },
     [menu, sequenceLength],
@@ -1020,9 +1042,9 @@ export default function FightersPane({
                   </button>
                 </div>
 
-                {combos.length > 0 && (
-                  <ul className="combo-list" aria-label="Saved combos">
-                    {combos.map((combo) => (
+                {fighterCombos.length > 0 && (
+                  <ul className="combo-list" aria-label="Saved combos for this fighter">
+                    {fighterCombos.map((combo) => (
                       <li key={combo.name} className="combo">
                         <button
                           type="button"
@@ -1039,7 +1061,7 @@ export default function FightersPane({
                           className="icon-btn"
                           aria-label={`Delete combo ${combo.name}`}
                           disabled={idle}
-                          onClick={() => writeCombos(removeCombo(combos, combo.name))}
+                          onClick={() => writeCombos(removeCombo(combos, combo.fromCharacterId, combo.name))}
                         >
                           <Icon name="x-mark" size={12} />
                         </button>
@@ -1052,17 +1074,18 @@ export default function FightersPane({
 
                 <p className="field-hint">
                   {/*
-                    Saying what a combo IS, because the obvious reading is wrong
-                    in a way that costs a fight. It stores actions, not the five
-                    integers — those are positions in one fighter's menu, and the
-                    same five integers on another fighter are five different
-                    moves, submitted successfully, with no sign of trouble until
-                    the verdict.
+                    Two facts, and both are things an operator would otherwise
+                    have to discover. The first is the scoping they can see —
+                    this list is shorter than their whole library on purpose. The
+                    second is what a combo IS, because the obvious reading is
+                    wrong in a way that costs a fight: it stores actions, not the
+                    five integers, which are positions in one fighter's menu.
                   */}
-                  Combos are stored in this browser as actions, not as positions — a menu follows
-                  the genome, so applying one to a different fighter fills only what that fighter
-                  can actually do. Nothing is sent anywhere, and nothing is committed until you
-                  submit.
+                  Combos belong to the fighter they were saved from — a menu follows the genome, so
+                  the same five positions on another fighter are five different moves. This list is
+                  {" "}
+                  {chosen?.name ?? "this fighter"}&rsquo;s. Nothing is sent anywhere, and nothing is
+                  committed until you submit.
                 </p>
               </div>
             )}
