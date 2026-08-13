@@ -83,10 +83,30 @@ function keyFor(password: string): Promise<CryptoKey> {
   return s.key.derived;
 }
 
-/** Whether a token is a live session. `"not-required"` when no password is set. */
+/**
+ * Whether a token is a live session. `"not-required"` when no password is set.
+ *
+ * ## An absent token never touches the key
+ *
+ * The early return is not a micro-optimisation. `keyFor` runs PBKDF2 at 210k
+ * iterations — deliberately ~100ms — and a request that carries no cookie at
+ * all cannot be valid under any key, so deriving one answers a question already
+ * settled.
+ *
+ * Skipping it closes a small amplifier: on a public URL, an unauthenticated
+ * flood would otherwise make this process do key derivation on demand, which is
+ * work an attacker gets for the price of an empty POST. It also stops the gate
+ * from being the slowest thing in a test suite — `test/session-gate.test.ts`
+ * posts without a cookie by design, and paying for a key there made the whole
+ * suite flaky under parallel load.
+ *
+ * Nothing is weakened: a token that IS present is verified exactly as before,
+ * against a key derived from the current password.
+ */
 export async function sessionFrom(token: string | undefined): Promise<SessionState> {
   const password = configured();
   if (password === null) return "not-required";
+  if (!token) return "invalid";
   const result = await verify(await keyFor(password), token, Date.now());
   return result === "valid" ? "valid" : "invalid";
 }
