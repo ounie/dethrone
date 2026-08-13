@@ -166,7 +166,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!cmd) return fail("CONSOLE_UNKNOWN_COMMAND", { id });
 
   // ── Registration gates ────────────────────────────────────────────────────
-  if (cmd.requiresOptIn && !cfg.allowGenesis) {
+  if (cmd.requiresOptIn && !cfg.optIns.has(cmd.requiresOptIn)) {
     return fail("CONSOLE_COMMAND_DISABLED", { id, requires: cmd.requiresOptIn });
   }
 

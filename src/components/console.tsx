@@ -6,6 +6,7 @@ import ConsoleLayout from "./console-layout";
 import CommandPane from "./command-pane";
 import ConfirmDialog, { type ConfirmRequest } from "./confirm-dialog";
 import FightersPane from "./fighters-pane";
+import MatchPane from "./match-pane";
 import Masthead, { type Ceiling, type House, type Wallet } from "./masthead";
 import Rail from "./rail";
 import ResponseLog, { type LogRow } from "./response-log";
@@ -17,6 +18,7 @@ import type { ArenaChoice, Capabilities, StakeRange } from "@/lib/capability";
 import type { Standing } from "@/lib/standing";
 import type { Envelope } from "@/lib/envelope";
 import { byId, COMMANDS, type Command } from "@/lib/commands";
+import type { PatronTierOption } from "@/lib/patronage";
 import { logTime } from "@/lib/format";
 
 /**
@@ -61,6 +63,7 @@ export default function Console({
   agent,
   forgeNote,
   stakeRange,
+  patronTiers,
   arenas,
   sequenceLength,
   ceiling,
@@ -75,6 +78,7 @@ export default function Console({
   agent: AgentConfig;
   forgeNote: string | null;
   stakeRange: StakeRange;
+  patronTiers: readonly PatronTierOption[];
   /** Every arena the canon publishes, for the fields that name one. */
   arenas: readonly ArenaChoice[];
   /** The canon's published sequence length, or null if it publishes none. */
@@ -218,6 +222,22 @@ export default function Console({
     editable, an armed command still overrides it, and nothing is sent until Run.
   */
   const [openFighter, setOpenFighter] = useState<number | null>(null);
+
+  /*
+    Which match the Match card opens, and the precedence is deliberate.
+
+    The seat's live match is the standing answer — it is what is happening now,
+    and a console that had to be told about it would be asking the operator for
+    something it already knows. A match the operator just READ outranks it,
+    because running a match read is asking for that match by name.
+
+    Read off the envelope rather than tracked separately, for the reason the
+    forge watch beside it gives: an envelope with no matchId is simply not a
+    match, and inferring one would be the panel deciding what the operator meant.
+  */
+  const readMatchId = (envelope?.body as { matchId?: unknown } | undefined)?.matchId ?? null;
+  const openMatchId =
+    (typeof readMatchId === "string" && readMatchId) || seat.liveMatchId || null;
 
 
   /** A proposal, accepted. Pre-fills the form; it does not run anything. */
@@ -390,6 +410,7 @@ export default function Console({
               busy={busy}
               stakeRange={stakeRange}
               arenas={arenas}
+              patronTiers={patronTiers}
               forgeNote={forgeNote}
               sequenceLength={sequenceLength}
               armedAt={armedAt}
@@ -415,6 +436,19 @@ export default function Console({
               onArm={loadCommand}
               onSelectedFighter={setOpenFighter}
               forged={forged}
+            />
+          ),
+          /*
+            The match to open, from what the console already knows. The seat's
+            live match is the standing answer; a match id the operator just read
+            wins over it, because running one is asking for it.
+          */
+          match: (drag) => (
+            <MatchPane
+              matchId={openMatchId}
+              operator={operator}
+              drag={drag}
+              disabled={busy}
             />
           ),
           response: (drag) => <ResponsePane envelope={envelope} drag={drag} />,

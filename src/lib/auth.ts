@@ -83,10 +83,30 @@ function keyFor(password: string): Promise<CryptoKey> {
   return s.key.derived;
 }
 
-/** Whether a token is a live session. `"not-required"` when no password is set. */
+/**
+ * Whether a token is a live session. `"not-required"` when no password is set.
+ *
+ * ## An absent token never touches the key
+ *
+ * The early return is not a micro-optimisation. `keyFor` runs PBKDF2 at 210k
+ * iterations — deliberately ~100ms — and a request that carries no cookie at
+ * all cannot be valid under any key, so deriving one answers a question already
+ * settled.
+ *
+ * Skipping it closes a small amplifier: on a public URL, an unauthenticated
+ * flood would otherwise make this process do key derivation on demand, which is
+ * work an attacker gets for the price of an empty POST. It also stops the gate
+ * from being the slowest thing in a test suite — `test/session-gate.test.ts`
+ * posts without a cookie by design, and paying for a key there made the whole
+ * suite flaky under parallel load.
+ *
+ * Nothing is weakened: a token that IS present is verified exactly as before,
+ * against a key derived from the current password.
+ */
 export async function sessionFrom(token: string | undefined): Promise<SessionState> {
   const password = configured();
   if (password === null) return "not-required";
+  if (!token) return "invalid";
   const result = await verify(await keyFor(password), token, Date.now());
   return result === "valid" ? "valid" : "invalid";
 }
@@ -193,7 +213,23 @@ export function attemptSucceeded(): void {
   s.lockedUntil = 0;
 }
 
-/** Test seam, matching `__resetConfigCache` in `config.ts`. Never called in production. */
+/**
+ * Test seams, matching `__resetConfigCache` in `config.ts`. Never called in
+ * production.
+ *
+ * Two of them, and the split is about cost rather than tidiness. Deriving a key
+ * is deliberately expensive — 210k PBKDF2 rounds, roughly 100ms — so a suite
+ * that cleared the memo between every case paid that per test and pushed itself
+ * toward the 5s default timeout under parallel load. The throttle is what a
+ * login test actually needs to reset; the key is keyed on the password and is
+ * re-derived on its own the moment that changes.
+ */
+export function __resetThrottle(): void {
+  const s = state();
+  s.failures = 0;
+  s.lockedUntil = 0;
+}
+
 export function __resetAuth(): void {
   const holder = globalThis as unknown as Record<symbol, AuthState | undefined>;
   holder[STATE] = undefined;

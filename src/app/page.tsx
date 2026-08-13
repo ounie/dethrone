@@ -471,6 +471,7 @@ export default async function Page() {
         agent={agent}
         forgeNote={live.forgeNote}
         stakeRange={live.duel}
+        patronTiers={live.patronage}
         arenas={arenas}
         sequenceLength={live.actions.sequenceLength}
         ceiling={{

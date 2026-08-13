@@ -68,6 +68,28 @@ export interface Rules {
    * still refuses the rest.
    */
   actions: { sequenceLength: number | null; menuSize: number | null };
+  /**
+   * The Founding Purse's tiers, straight from the canon.
+   *
+   * Published because a form cannot be built without them: the pledge command
+   * picks a tier and then asks for a ceiling, and both the price it shows and
+   * the ceiling it suggests have to be the arena's numbers. Typing five prices
+   * into `commands.ts` would be a second copy of arena data — the thing
+   * `DUEL_STAKE_PRESET_CENTS` gets away with only because presets are a
+   * suggestion filtered against the live range, and a price is not a suggestion.
+   *
+   * `priceMicro` is integer micro-USDC as a string, because the entry tier is
+   * sub-cent and has no whole-cent form. Empty when the canon publishes nothing,
+   * and a caller must then show no price and suggest no ceiling rather than
+   * inventing either.
+   */
+  patronage: {
+    key: string;
+    name: string;
+    priceMicro: string;
+    priceLabel: string;
+    cap: number | null;
+  }[];
   /** Feature flags the console can infer from published fields alone. */
   features: Partial<Record<FeatureFlag, boolean>>;
   arena: { slug: string; displayName: string } | null;
@@ -96,6 +118,7 @@ const UNREACHABLE: Rules = {
   forgeNote: null,
   duel: { enabled: false, minStakeCents: null, maxStakeCents: null, note: null },
   actions: { sequenceLength: null, menuSize: null },
+  patronage: [],
   features: {},
   arena: null,
   fetchedAt: 0,
@@ -111,6 +134,7 @@ function shape(body: unknown, interfaceVersion: string | null): Rules {
   const forge = (b.forge ?? {}) as Record<string, unknown>;
   const duel = (b.duel ?? {}) as Record<string, unknown>;
   const actions = (b.actions ?? {}) as Record<string, unknown>;
+  const patronage = (b.patronage ?? {}) as Record<string, unknown>;
 
   const duelEnabled = duel.enabled === true;
 
@@ -134,6 +158,34 @@ function shape(body: unknown, interfaceVersion: string | null): Rules {
       sequenceLength: num(actions.sequenceLength),
       menuSize: num(actions.menuSize),
     },
+    /*
+      Each row validated individually and dropped if it is not whole, rather
+      than the block being taken or left as a unit. A tier missing its price
+      would otherwise render a picker entry that shows nothing and suggests
+      nothing, which reads as a broken form rather than as an absent number.
+
+      `priceMicro` is kept as the STRING the canon sent. Parsing it to a JS
+      number here would put money through a double for no reason — the only
+      thing this console does with it is show it and derive a ceiling, and both
+      are done from the string in `lib/patronage.ts`.
+    */
+    patronage: (Array.isArray(patronage.tiers) ? patronage.tiers : [])
+      .map((row) => row as Record<string, unknown>)
+      .filter(
+        (row) =>
+          typeof row.key === "string" &&
+          typeof row.name === "string" &&
+          typeof row.priceLabel === "string" &&
+          typeof row.priceMicro === "string" &&
+          /^\d+$/.test(row.priceMicro),
+      )
+      .map((row) => ({
+        key: row.key as string,
+        name: row.name as string,
+        priceMicro: row.priceMicro as string,
+        priceLabel: row.priceLabel as string,
+        cap: num(row.cap),
+      })),
     // Only `duels` is published directly. The rest are discovered the honest
     // way — a 404 that carries the interface header — rather than guessed at
     // here, because a guess would be the console deciding a rule.

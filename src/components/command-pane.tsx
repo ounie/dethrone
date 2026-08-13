@@ -10,10 +10,12 @@ import {
   DUEL_STAKE_PRESET_CENTS,
   fieldsFor,
   isCallerPriced,
+  MAX_FIELD,
   type Command,
   type Field,
 } from "@/lib/commands";
 import { money } from "@/lib/format";
+import { ceilingCentsFor, type PatronTierOption } from "@/lib/patronage";
 
 /**
  * One command: the resolved route, the note verbatim, the inputs, one button.
@@ -109,6 +111,7 @@ export default function CommandPane({
   busy,
   stakeRange,
   arenas,
+  patronTiers,
   forgeNote,
   sequenceLength,
   armedAt,
@@ -123,6 +126,12 @@ export default function CommandPane({
   stakeRange: StakeRange;
   /** Every arena the canon publishes. Empty means the read did not come back. */
   arenas: readonly ArenaChoice[];
+  /**
+   * The Founding Purse's tiers and their prices, from the canon. Empty means
+   * the rules read did not come back — the picker then names the tiers from the
+   * catalogue and shows no price, rather than inventing one.
+   */
+  patronTiers: readonly PatronTierOption[];
   forgeNote: string | null;
   /** The canon's published sequence length, or null. Passed straight to the picker. */
   sequenceLength: number | null;
@@ -197,8 +206,24 @@ export default function CommandPane({
   // wins. The catalogue's copy is the fallback for an unreachable arena.
   const note = cmd.id === "forge" && forgeNote ? forgeNote : cmd.note;
 
-  const priceText =
-    capability.liveCents !== undefined
+  /*
+    A tier-priced command whose tier has been chosen knows its price, so it says
+    it — the same move `livePrice` makes for the forge and the challenge, and
+    for the same reason: the rules are published so a client can stop saying
+    "quoted" when it has been told the number.
+
+    Still the arena's string, never a computed one, and the ceiling beside the
+    field is what actually holds if the 402 disagrees. Before a tier is chosen
+    there is genuinely no price to name and it stays "quoted".
+  */
+  const patronField = fieldsFor(cmd).find((f) => f.kind === "patronTier");
+  const chosenTier = patronField
+    ? (patronTiers.find((t) => t.key === args[patronField.name]) ?? null)
+    : null;
+
+  const priceText = chosenTier
+    ? chosenTier.priceLabel
+    : capability.liveCents !== undefined
       ? money(capability.liveCents)
       : isCallerPriced(cmd)
         ? "quoted"
@@ -208,7 +233,7 @@ export default function CommandPane({
     ? "Working…"
     : !paid
       ? "Run"
-      : isCallerPriced(cmd) && capability.liveCents === undefined
+      : isCallerPriced(cmd) && capability.liveCents === undefined && !chosenTier
         ? "Run — settles the quoted price"
         : `Run — settles ${priceText}`;
 
@@ -319,6 +344,48 @@ export default function CommandPane({
                       disabled={!capability.enabled}
                       onChange={(json) => onArg(field.name, json)}
                     />
+                  ) : field.kind === "patronTier" ? (
+                    /*
+                      A select that PRICES its options from the canon, and fills
+                      the ceiling beside it when one is chosen.
+
+                      Two things it must not do. It must not compute a price —
+                      every figure here is a string the arena published, and
+                      with the rules read unavailable it shows none. And the
+                      ceiling it fills ROUNDS UP: `pay.ts` compares
+                      `maxCents x 10000` against the quote in atomic units, so a
+                      floor-rounded ceiling would refuse the very tier it was
+                      filled from, and the operator would read that as the arena
+                      rejecting a correct request.
+
+                      The ceiling stays typeable afterwards. Filling a field is
+                      a convenience; locking it would be this console deciding
+                      what the operator may offer.
+                    */
+                    <select
+                      id={id}
+                      value={args[field.name] ?? ""}
+                      disabled={!capability.enabled}
+                      aria-describedby={hint ? `${id}-hint` : undefined}
+                      onChange={(e) => {
+                        const key = e.target.value;
+                        onArg(field.name, key);
+                        const ceiling = ceilingCentsFor(
+                          patronTiers.find((t) => t.key === key)?.priceMicro ?? "",
+                        );
+                        if (ceiling !== null) onArg(MAX_FIELD.name, String(ceiling));
+                      }}
+                    >
+                      <option value="">— choose a tier —</option>
+                      {(patronTiers.length > 0
+                        ? patronTiers.map((t) => ({ key: t.key, label: `${t.name} — ${t.priceLabel}` }))
+                        : (field.options ?? []).map((o) => ({ key: o, label: o }))
+                      ).map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                   ) : field.kind === "select" || field.kind === "boolean" ? (
                     <select
                       id={id}

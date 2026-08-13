@@ -1,6 +1,6 @@
 import "server-only";
 import type { Capabilities, Capability } from "./capability";
-import { COMMANDS, type Command } from "./commands";
+import { COMMANDS, type Command, type OptIn } from "./commands";
 import { config } from "./config";
 import { rules } from "./rules";
 import { hasWallet } from "./wallet";
@@ -35,7 +35,7 @@ export type LiveRules = Awaited<ReturnType<typeof rules>>;
 
 export interface CapabilityContext {
   hasKey: boolean;
-  allowGenesis: boolean;
+  optIns: ReadonlySet<OptIn>;
   live: LiveRules;
 }
 
@@ -43,7 +43,7 @@ export interface CapabilityContext {
 export function capabilityFor(cmd: Command, ctx: CapabilityContext): Capability {
   const liveCents = cmd.livePrice ? ctx.live.money[cmd.livePrice] : undefined;
 
-  if (cmd.requiresOptIn && !ctx.allowGenesis) {
+  if (cmd.requiresOptIn && !ctx.optIns.has(cmd.requiresOptIn)) {
     return {
       enabled: false,
       reason: `Not registered on this deploy. Set ${cmd.requiresOptIn}=true to add it.`,
@@ -91,7 +91,7 @@ export async function capabilities(live?: LiveRules): Promise<Capabilities> {
   const resolved = live ?? (await rules());
   const ctx: CapabilityContext = {
     hasKey: hasWallet(),
-    allowGenesis: cfg.allowGenesis,
+    optIns: cfg.optIns,
     live: resolved,
   };
 
