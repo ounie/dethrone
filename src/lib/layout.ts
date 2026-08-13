@@ -40,7 +40,8 @@ export type PaneId =
   | "response"
   | "log"
   | "seat"
-  | "standing";
+  | "standing"
+  | "match";
 
 /**
  * The three places a card can live.
@@ -65,6 +66,7 @@ export const PANE_TITLES: Record<PaneId, string> = {
   log: "Response log",
   seat: "Seat",
   standing: "Your standing",
+  match: "Match",
 };
 
 export const ZONE_TITLES: Record<ZoneId, string> = {
@@ -82,7 +84,10 @@ export const ZONE_TITLES: Record<ZoneId, string> = {
  * `reset()` returns exactly this.
  */
 export const DEFAULT_ARRANGEMENT: Arrangement = {
-  wide: ["fighters"],
+  // Fighters first, then the match beneath it — both want the full width: the
+  // roster and the sixteen-action menu were laid out for it, and the judge panel
+  // is two fighters facing each other across five exchanges.
+  wide: ["fighters", "match"],
   left: ["chat", "command", "log"],
   right: ["response", "seat", "standing"],
 };

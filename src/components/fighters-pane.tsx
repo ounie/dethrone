@@ -209,6 +209,16 @@ export default function FightersPane({
   /** Focused when the viewer opens: the safe choice, and here the only one. */
   const closeViewerRef = useRef<HTMLButtonElement>(null);
   const [presetNote, setPresetNote] = useState<string | null>(null);
+  /**
+   * The preset the ARENA last echoed back, for this fighter, in this session.
+   *
+   * Not "the fighter's preset" — the panel cannot know that. A preset is sealed:
+   * the arena never publishes it on the character resource, so a fresh selection
+   * has no way to read one and this stays null until a write is answered. That
+   * is why every sentence rendered from it is scoped to what was set here, and
+   * why null renders as *nothing said* rather than as "no preset".
+   */
+  const [storedPreset, setStoredPreset] = useState<number[] | null>(null);
 
   /*
     Combos live in `localStorage`, which is an external store, so they are read
@@ -278,6 +288,7 @@ export default function FightersPane({
     setMatchIdField("");
     setComboNote(null);
     setPresetNote(null);
+    setStoredPreset(null);
     setViewing(false);
     // A forge watch belongs to the wallet that paid for it. Left running, it
     // would poll the previous operator's character under the new one's name.
@@ -388,8 +399,11 @@ export default function FightersPane({
     setMenuError(null);
     setPicks([]);
     // A preset note names the PREVIOUS fighter's write; carrying it across a
-    // selection would read as a fact about this one.
+    // selection would read as a fact about this one. The echoed value goes with
+    // it, for the same reason and with more force — it is what the "stored"
+    // sentences below are rendered from.
     setPresetNote(null);
+    setStoredPreset(null);
     setBusy(true);
     const id = String(characterId);
     try {
@@ -647,15 +661,30 @@ export default function FightersPane({
         presetActionIds: JSON.stringify(picks),
       });
       const body = bodyOf(data) as { presetActionIds?: number[] | null } | undefined;
-      setPresetNote(
-        Array.isArray(body?.presetActionIds)
-          ? `preset set · ${body.presetActionIds.length} actions`
-          : codeOf(data, "REFUSED"),
-      );
+      const echoed = Array.isArray(body?.presetActionIds) ? body.presetActionIds : null;
+      // The arena's echo, not the picks that were sent. If the two ever differ,
+      // the one that fights is the arena's — so that is the one this renders.
+      setStoredPreset(echoed);
+      setPresetNote(echoed ? `preset set · ${echoed.length} actions` : codeOf(data, "REFUSED"));
     } finally {
       setBusy(false);
     }
   }, [chosen, picks]);
+
+  /**
+   * Whether the plan on screen is the one the arena echoed back.
+   *
+   * Three states, and the third is the one that matters: **null means unknown,
+   * not "no preset"**. A preset is sealed, so a fighter selected this session
+   * may well have one that this panel has never been told about. Rendering
+   * "no preset" from silence would be inventing a fact about the operator's own
+   * fighter — so silence renders as the neutral sentence, which is true either
+   * way: paying does not carry a plan.
+   */
+  const planIsStored =
+    storedPreset === null
+      ? null
+      : storedPreset.length === picks.length && storedPreset.every((v, i) => v === picks[i]);
 
   const idle = busy || disabled;
 
@@ -1011,6 +1040,22 @@ export default function FightersPane({
               </button>
               {presetNote && <span className="num window-state">{presetNote}</span>}
             </div>
+            {/*
+              Rendered only from an echo this session produced. `planIsStored`
+              is null until then, and null says nothing — see its comment.
+            */}
+            {planIsStored === false && picks.length > 0 && (
+              <p className="field-hint" data-tone="warn">
+                The plan above is not what you stored. The preset still holds the earlier actions,
+                and that is what a close would commit — set it again to revise.
+              </p>
+            )}
+            {planIsStored === true && (
+              <p className="field-hint">
+                This plan is stored on the fighter. If a window closes and you have not submitted
+                live, these are the actions that fight.
+              </p>
+            )}
             <p className="field-hint">
               The plan above dies with this tab; a preset lives with the fighter, on the arena,
               sealed. If a selection window closes and you never submitted, the preset fights in
@@ -1196,6 +1241,27 @@ export default function FightersPane({
               These fill the command pane and stop. Nothing here settles an amount — the Run
               button does, and it is the only one that can.
             </p>
+            {/*
+              The gap this closes, reported by an operator who hit it: build a
+              plan, press "Challenge the throne", press Run, and reasonably
+              assume the money bought the plan. It did not. `POST /challenge` is
+              `{ characterId }` and nothing else, by Amendment A — so the panel
+              has to say where the actions actually go, at the moment the
+              operator is about to leave for the command pane.
+
+              Not gated on `planIsStored === false`: it says the same thing when
+              nothing has been stored (null), because the sentence is true either
+              way and silence here is what caused the confusion.
+            */}
+            {picks.length > 0 && planIsStored !== true && (
+              <p className="field-hint" data-tone="warn">
+                Your plan does not travel with the payment. Entering a fighter buys the match and
+                carries the fighter id alone — the actions arrive later, either as a live
+                submission when the window opens at pairing, or from the standing preset above,
+                which the close commits for you. Set the preset and you are covered without
+                being at the keyboard.
+              </p>
+            )}
           </div>
         )}
 

@@ -3329,3 +3329,632 @@ code {
     animation: none !important;
   }
 }
+
+/* ── The match ───────────────────────────────────────────────────────────────
+ *
+ * The judge panel, played back: two fighters facing each other, the exchanges
+ * between them as slot reels, a medallion that spins and lands, the coins under.
+ *
+ * ## Colour here is the taxonomy, never the money rule
+ *
+ * Action cards carry `.type-tag`, the five-hue taxonomy defined above, safe as
+ * colour only because each tag prints its own name. The side that took an
+ * exchange is marked in GOLD — the frame material, a voice — and never in ember.
+ * Ember is the money colour and this card settles nothing: its one button
+ * reveals a decision the arena already made. A verdict wearing the same fill as
+ * "Run — settles $1.00" would be the most expensive confusion this stylesheet
+ * could cause.
+ */
+.match-tabs {
+  display: flex;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+
+.match-tab,
+.match-filter {
+  padding: 5px var(--s3);
+  border: 1px solid var(--border-hairline);
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease);
+}
+
+.match-tab[data-active="true"],
+.match-filter[data-active="true"] {
+  color: var(--gold-400);
+  border-color: var(--border-gold);
+}
+
+.match-tab:disabled,
+.match-filter:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/*
+ * The card's own padding.
+ *
+ * `Panel` hands its children to `panel-body-wrap`, which is deliberately
+ * layout-transparent — every pane supplies its own inset, usually by wrapping in
+ * `.pane-body`. This card cannot: it renders `.pane-body.empty` for its own
+ * empty states, and nesting one inside another double-pads them. So it takes the
+ * same inset directly.
+ */
+.match-body {
+  padding: var(--s4);
+  min-width: 0;
+}
+
+/*
+ * The id is a 26-character opaque token. A field it does not fit in is a field
+ * nobody can check, which is why this is flex-grown rather than `width: 15ch`
+ * like `.picker-char`.
+ *
+ * It carries the full field styling rather than borrowing `.picker-char`, and
+ * the reason is worth recording: the first version set only the width and
+ * inherited nothing else, so the input rendered with the browser's default WHITE
+ * background — a bright rectangle in the middle of a dark card, on the one
+ * screen whose whole argument is that colour means something.
+ */
+.match-id-input {
+  flex: 1 1 auto;
+  min-width: 260px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-display);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11.5px;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+.match-id-input:focus {
+  outline: none;
+  border-color: var(--border-gold);
+}
+
+.match-id-input:disabled {
+  opacity: 0.6;
+}
+
+.match-open {
+  flex-wrap: wrap;
+}
+
+.match {
+  display: grid;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+
+.match-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s3);
+  font-size: 10.5px;
+}
+
+.match-label {
+  margin-left: auto;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+}
+
+.match-label[data-point="true"] {
+  color: var(--awaiting);
+}
+
+.match-window {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid color-mix(in srgb, var(--awaiting) 32%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--awaiting) 7%, transparent);
+}
+
+.match-clock {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--awaiting);
+  letter-spacing: 0.04em;
+}
+
+.match-clock[data-tone="warn"] {
+  opacity: 0.55;
+}
+
+.match-clock-note,
+.match-house,
+.match-dq {
+  font-size: 10px;
+}
+
+/*
+ * ONE exchange, five columns: portrait, action, medallion, action, portrait.
+ *
+ * Not five rows. The five are the coins underneath; this row is the exchange
+ * being fought, which is what makes a reel landing worth watching and what the
+ * arena's own page does. A stack of five turns a fight into a table.
+ */
+.match-board {
+  display: grid;
+  grid-template-columns: minmax(88px, 132px) minmax(0, 1fr) auto minmax(0, 1fr) minmax(88px, 132px);
+  align-items: center;
+  gap: var(--s4);
+}
+
+.match-portrait-frame {
+  transition: transform var(--dur-base) var(--ease);
+}
+
+/* The lunge. Both sides move in, and the impact is a hard stop rather than a
+ * bounce — a spring here would read as cartoon. */
+.match-board[data-lunge="true"] .match-portrait-frame[data-align="CHALLENGER"] {
+  transform: translateX(10px);
+}
+
+.match-board[data-lunge="true"] .match-portrait-frame[data-align="THRONE"] {
+  transform: translateX(-10px);
+}
+
+.match-portrait {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border: 1px solid var(--border-gold);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  transition:
+    border-color var(--dur-base) var(--ease),
+    filter var(--dur-base) var(--ease);
+}
+
+.match-portrait-frame[data-crest="won"] .match-portrait {
+  border-color: var(--gold-400);
+  filter: brightness(1.1);
+}
+
+.match-portrait-frame[data-crest="lost"] .match-portrait {
+  filter: saturate(0.55) brightness(0.72);
+}
+
+.match-portrait-empty {
+  border-style: dashed;
+  border-color: var(--border-hairline);
+}
+
+/* Names below the board, each hugging its own side. */
+.match-names {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s4);
+  align-items: start;
+}
+
+.match-name-block {
+  display: grid;
+  gap: 2px;
+}
+
+.match-name-block[data-align="THRONE"] {
+  justify-items: end;
+  text-align: right;
+}
+
+/*
+ * Wraps rather than truncating. A fighter's name is not a field anyone can
+ * reconstruct from its first eight characters, which is what an ellipsis leaves
+ * of "Rynenra the Unkept".
+ */
+.match-name {
+  font-size: 19px;
+  line-height: 1.2;
+  color: var(--gold-400);
+  overflow-wrap: anywhere;
+}
+
+.match-dq {
+  color: var(--awaiting);
+}
+
+.match-exchanges {
+  display: grid;
+  gap: var(--s2);
+}
+
+.match-exchange {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s3);
+  opacity: 0.3;
+  transition: opacity var(--dur-base) var(--ease);
+}
+
+.match-exchange[data-open="true"],
+.match-exchange[data-current="true"] {
+  opacity: 1;
+}
+
+/* The impact frame. One tick of a brighter rule, no movement — the fighters do
+ * the moving, and two things lunging at once reads as a glitch. */
+.match-exchange[data-impact="true"] .match-action {
+  border-color: var(--border-gold);
+}
+
+.match-action {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  justify-items: center;
+  padding: var(--s2) var(--s3);
+  min-height: 96px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  text-align: center;
+  overflow: hidden;
+  transition:
+    border-color var(--dur-base) var(--ease),
+    background var(--dur-base) var(--ease),
+    opacity var(--dur-base) var(--ease);
+}
+
+.match-action-empty {
+  border-style: dashed;
+  background: none;
+}
+
+.match-action-text {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-dim);
+}
+
+.match-action[data-lit="true"] {
+  border-color: var(--border-gold);
+  background: color-mix(in srgb, var(--gold-400) 8%, transparent);
+}
+
+.match-action[data-lit="true"] .match-action-text {
+  color: var(--text);
+}
+
+.match-action[data-fate="lost"] {
+  opacity: 0.6;
+}
+
+/* ── The reel ──────────────────────────────────────────────────────────────
+ * A fighter's whole menu, cycling past and coming to rest on what was played.
+ * `steps()` rather than a linear translate: a slot reel snaps between entries,
+ * and a smooth slide reads as a scroll. */
+/*
+ * The window the reel spins behind.
+ *
+ * ## `height`, not `min-height`, and the strip out of flow
+ *
+ * Both halves are load-bearing and the bug they fix looked like a CSS typo. The
+ * strip is a grid of N cells at 96px each; as an in-flow grid item it makes its
+ * own track that tall, so the CONTAINER grew to fit and `overflow: hidden` had
+ * nothing left to clip — the reel rendered as a full list of every action the
+ * fighter has, spilling down the card.
+ *
+ * `min-height: 96px` from `.match-action` is what let it grow, so this pins
+ * `height` outright, and the strip is absolutely positioned so it cannot size
+ * its parent at all. Now the box is one cell tall and the strip travels behind
+ * it, which is what a reel is.
+ */
+.match-reel {
+  position: relative;
+  height: 96px;
+  min-height: 96px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.match-reel-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  animation-name: match-reel-spin;
+  animation-timing-function: cubic-bezier(0.12, 0.7, 0.2, 1);
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+
+.match-reel-cell {
+  display: grid;
+  place-items: center;
+  height: 96px;
+  padding: 0 var(--s3);
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+@keyframes match-reel-spin {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The reveal still happens — it simply stops moving. The information is in
+   * the landing, never in the travel. */
+  .match-reel-strip {
+    animation: none;
+  }
+  .match-medallion img {
+    animation: none !important;
+  }
+  .match-fighter {
+    transition: none;
+  }
+}
+
+/* ── The medallion ────────────────────────────────────────────────────────── */
+.match-medallion {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  perspective: 420px;
+}
+
+.match-medallion img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  opacity: 0.28;
+  transition:
+    opacity var(--dur-base) var(--ease),
+    filter var(--dur-base) var(--ease);
+}
+
+.match-medallion[data-kind="spinning"] img {
+  opacity: 1;
+  animation: match-medallion-spin 0.42s linear infinite;
+}
+
+.match-medallion[data-kind="landed"] img {
+  opacity: 1;
+  /* A landing, not a fade-in: the coin arrives. */
+  animation: match-medallion-land 0.34s var(--ease);
+}
+
+@keyframes match-medallion-land {
+  from {
+    transform: rotateY(180deg) scale(1.35);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes match-medallion-spin {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
+
+.match-coins {
+  display: flex;
+  justify-content: center;
+  gap: var(--s3);
+  margin-top: var(--s2);
+}
+
+/*
+ * The coins are the medallions themselves, dimmed until they land — the same
+ * face the board shows, at a size you can count. A ring of abstract dots would
+ * be a second vocabulary for a thing the card already has a picture of.
+ */
+.match-pip {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+}
+
+.match-pip img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  opacity: 0.3;
+  transition: opacity var(--dur-base) var(--ease);
+}
+
+.match-pip[data-state="active"] img {
+  opacity: 0.65;
+}
+
+.match-pip[data-won] img {
+  opacity: 1;
+}
+
+.match-score {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.match-score [data-lead="true"] {
+  color: var(--gold-400);
+}
+
+/*
+ * Four lines that belong together: the verdict, the judge's sentence, the
+ * seal, and the provenance. They are a stack, not four paragraphs — the grid
+ * gap alone was doing the spacing while each `<p>` also brought its own margin,
+ * so every line was separated twice and the block read as four unrelated
+ * statements.
+ */
+.match-verdict {
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  text-align: center;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border-hairline);
+  animation: match-banner var(--dur-base) var(--ease);
+}
+
+.match-verdict > p {
+  margin: 0;
+}
+
+@keyframes match-banner {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.match-sealed {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.match-verdict-line {
+  font-size: 28px;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: var(--gold-400);
+}
+
+/* ── History ──────────────────────────────────────────────────────────────── */
+.match-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+
+.match-rows {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.match-row {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1.1fr) minmax(0, 1.6fr) auto auto;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-base) var(--ease);
+}
+
+.match-row:hover:not(:disabled) {
+  border-color: var(--border-gold);
+}
+
+.match-row:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.match-row-outcome {
+  color: var(--gold-400);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.match-row-when,
+.match-row-kind {
+  font-size: 10px;
+}
+
+.match-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+
+@media (max-width: 900px) {
+  /* The medallion keeps the middle; the portraits shrink rather than stack, so
+   * the row stays a confrontation. */
+  .match-board {
+    grid-template-columns: 56px minmax(0, 1fr) auto minmax(0, 1fr) 56px;
+    gap: var(--s2);
+  }
+  .match-medallion,
+  .match-medallion img {
+    width: 40px;
+    height: 40px;
+  }
+  .match-name {
+    font-size: 14px;
+  }
+  .match-row {
+    grid-template-columns: 50px minmax(0, 1fr);
+  }
+  .match-row-parties,
+  .match-row-when {
+    display: none;
+  }
+}
+
+/* The House, as a crest and a name — never the slug it arrives as. */
+.match-house {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+}
+
+.match-name-block[data-align="THRONE"] .match-house {
+  flex-direction: row-reverse;
+}
+
+.match-crest {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex: none;
+}

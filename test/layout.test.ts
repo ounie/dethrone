@@ -85,12 +85,19 @@ describe("move", () => {
   it("inserts before the named pane", () => {
     const out = move(DEFAULT_ARRANGEMENT, "standing", "left", "command");
     expect(out.left).toEqual(["chat", "standing", "command", "log"]);
-    expect(out.right).toEqual(["response", "seat"]);
+    // The source zone, minus what moved out of it. Spelled from the default
+    // rather than as a fixed pair, so adding a card to the shipped arrangement
+    // is a one-line change here instead of a puzzle about which literal is
+    // stale — the claim being pinned is that `move` removes from the source and
+    // inserts before the named pane, not what ships in the right column.
+    expect(out.right).toEqual(DEFAULT_ARRANGEMENT.right.filter((p) => p !== "standing"));
   });
 
   it("appends when there is nothing to go before", () => {
     const out = move(DEFAULT_ARRANGEMENT, "seat", "wide", null);
-    expect(out.wide).toEqual(["fighters", "seat"]);
+    // Spelled from the default for the same reason as the case above: the claim
+    // is that a null anchor APPENDS, not what ships in the wide row.
+    expect(out.wide).toEqual([...DEFAULT_ARRANGEMENT.wide, "seat"]);
   });
 
   it("never loses or duplicates a pane, wherever it lands", () => {

@@ -9,6 +9,7 @@ import {
   walletKeyVars,
   type Finding,
 } from "./assertions";
+import { OPT_INS, type OptIn } from "./commands";
 import type { SessionState } from "./session";
 import {
   DEFAULT_AUTONOMY_MAX_CENTS,
@@ -40,7 +41,16 @@ export interface ConsoleConfig {
   maxSpendCents: number;
   confirmOverCents: number;
   allowRemote: boolean;
-  allowGenesis: boolean;
+  /**
+   * The explicit opt-ins this deploy has granted, by env var name.
+   *
+   * A SET rather than a boolean per opt-in, because the boolean version had
+   * exactly one field (`allowGenesis`) checked for EVERY `requiresOptIn`
+   * command — so the second opt-in would have been granted by the first one's
+   * variable. Keyed by the literal on the command, which is the env var name,
+   * so there is no mapping to keep in step.
+   */
+  optIns: ReadonlySet<OptIn>;
   devBypass: boolean;
   serverless: boolean;
   /**
@@ -146,7 +156,7 @@ export function config(): ConsoleConfig {
     maxSpendCents: intOr(env.CONSOLE_MAX_SPEND_CENTS, DEFAULT_MAX_SPEND_CENTS),
     confirmOverCents: intOr(env.CONSOLE_CONFIRM_OVER_CENTS, DEFAULT_CONFIRM_OVER_CENTS),
     allowRemote: isTruthyFlag(env.CONSOLE_ALLOW_REMOTE),
-    allowGenesis: isTruthyFlag(env.CONSOLE_ALLOW_GENESIS),
+    optIns: new Set(OPT_INS.filter((name) => isTruthyFlag(env[name]))),
     devBypass: isTruthyFlag(env.CONSOLE_DEV_BYPASS),
     serverless,
     hostedPlatform: hostedPlatform(env),

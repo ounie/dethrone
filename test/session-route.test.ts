@@ -28,8 +28,10 @@ async function post(body: unknown, init: RequestInit = {}) {
 beforeEach(async () => {
   vi.resetModules();
   process.env.CONSOLE_PASSWORD = PASSWORD;
-  const { __resetAuth } = await import("@/lib/auth");
-  __resetAuth();
+  // The throttle only. Clearing the derived key too would re-run PBKDF2 for
+  // every case in this file — see the seam's comment in `auth.ts`.
+  const { __resetThrottle } = await import("@/lib/auth");
+  __resetThrottle();
 });
 
 afterEach(() => {

@@ -193,7 +193,23 @@ export function attemptSucceeded(): void {
   s.lockedUntil = 0;
 }
 
-/** Test seam, matching `__resetConfigCache` in `config.ts`. Never called in production. */
+/**
+ * Test seams, matching `__resetConfigCache` in `config.ts`. Never called in
+ * production.
+ *
+ * Two of them, and the split is about cost rather than tidiness. Deriving a key
+ * is deliberately expensive — 210k PBKDF2 rounds, roughly 100ms — so a suite
+ * that cleared the memo between every case paid that per test and pushed itself
+ * toward the 5s default timeout under parallel load. The throttle is what a
+ * login test actually needs to reset; the key is keyed on the password and is
+ * re-derived on its own the moment that changes.
+ */
+export function __resetThrottle(): void {
+  const s = state();
+  s.failures = 0;
+  s.lockedUntil = 0;
+}
+
 export function __resetAuth(): void {
   const holder = globalThis as unknown as Record<symbol, AuthState | undefined>;
   holder[STATE] = undefined;

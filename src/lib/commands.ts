@@ -80,7 +80,29 @@ export const CALLER_PRICED = -1;
  * exist; `command-pane.tsx` renders what it was handed, and falls back to a
  * free-text box when it was handed nothing.
  */
-export type FieldKind = "text" | "number" | "select" | "boolean" | "actions" | "arena";
+/**
+ * `patronTier` is `arena`'s sibling: a select whose OPTIONS ARE NAMED here but
+ * whose PRICES come from the canon.
+ *
+ * The distinction is the console's second rule. Naming the five tiers is not a
+ * game rule — they are a stable vocabulary, and the static `options` below are
+ * a fine fallback when the rules read fails, exactly as `arena` falls back to a
+ * text box. PRICING them is a rule, and five amounts typed into this file would
+ * be a second copy of arena data that goes wrong silently the day one moves.
+ *
+ * So `GET /api/rules` publishes a `patronage` block, the pane renders the price
+ * beside each option, and selecting one fills the ceiling from that number.
+ * With the read unavailable the select still works and simply shows no price —
+ * which is the honest state, and leaves the arena to quote in the 402.
+ */
+export type FieldKind =
+  | "text"
+  | "number"
+  | "select"
+  | "boolean"
+  | "actions"
+  | "arena"
+  | "patronTier";
 
 export interface Field {
   name: string;
@@ -96,7 +118,27 @@ export interface Field {
 
 export type Tier = "free" | "signed" | "paid";
 
-export type Group = "Read" | "Stable" | "Fight" | "Market" | "Court";
+/**
+ * The explicit opt-ins. Each is an env var name, and the name IS the key —
+ * `capabilityFor` looks this literal up in a set built from the environment, so
+ * the mapping cannot drift the way a parallel boolean field did.
+ */
+export const OPT_INS = ["CONSOLE_ALLOW_GENESIS", "CONSOLE_ALLOW_PATRONAGE"] as const;
+export type OptIn = (typeof OPT_INS)[number];
+
+/**
+ * ⚠️ **Vestigial.** Nothing reads `Command.group`, and `GROUPS` below has one
+ * consumer: a dead import in `rail.tsx`. The rail sections by `tier` — Free
+ * reads / Signed / Paid writes — on the argument stated at the top of that
+ * file, that cost is the only access control in the system and so the left
+ * column IS the permission model, rendered.
+ *
+ * It is kept, and kept accurate, because it is the obvious hook if sub-headers
+ * are ever wanted inside the cost sections. Do NOT reach for it expecting a
+ * section to appear: `"Court"` has been declared on three commands since the
+ * board shipped and has never rendered anywhere.
+ */
+export type Group = "Read" | "Stable" | "Fight" | "Market" | "Court" | "Patronage";
 
 /** Kill switches the canon exposes. A flagged route 404s when its feature is off. */
 export type FeatureFlag =
@@ -107,7 +149,8 @@ export type FeatureFlag =
   | "undercard"
   | "filmOrders"
   | "genesis"
-  | "court";
+  | "court"
+  | "patronage";
 
 export interface Command {
   id: string;
@@ -142,8 +185,17 @@ export interface Command {
    */
   maxField?: boolean;
   requiresFlag?: FeatureFlag;
-  /** Requires an explicit opt-in env var to appear at all. */
-  requiresOptIn?: "CONSOLE_ALLOW_GENESIS";
+  /**
+   * Requires an explicit opt-in env var to appear at all.
+   *
+   * ⚠️ This was a union of ONE value, checked against a hardcoded
+   * `cfg.allowGenesis` boolean. A second entry would therefore have been
+   * enabled by `CONSOLE_ALLOW_GENESIS` — a deploy that opted in to selling one
+   * $402 title would silently have opted in to a $40,200 pledge as well. The
+   * check now reads a SET keyed by this literal, so each opt-in enables exactly
+   * itself and adding a third is a type error until it is wired.
+   */
+  requiresOptIn?: OptIn;
   /** Irreversible and not a payment. The confirmation names what is destroyed. */
   destructive?: boolean;
   fields?: readonly Field[];
@@ -704,6 +756,23 @@ export const COMMANDS: readonly Command[] = [
       "The pool is anonymous by design, so this is the only read that answers what you are in.",
   },
   {
+    id: "duel_invitations",
+    label: "Challenges to me",
+    tier: "signed",
+    group: "Stable",
+    method: "GET",
+    path: "/api/duel/invitations",
+    price: "signed",
+    cents: 0,
+    signScope: "duel:invitations",
+    requiresFlag: "duels",
+    note:
+      "Open challenges addressed to your wallet, with every term: the stake, the arena, whether " +
+      "the duel is unlisted, and the hour it is appointed for. Nothing notifies you — this read is " +
+      "the whole of the inbox, so poll it. An invitation expires on its own clock whatever hour it " +
+      "names, and refunds its sender in full.",
+  },
+  {
     id: "release",
     label: "Release a fighter",
     tier: "signed",
@@ -765,7 +834,7 @@ export const COMMANDS: readonly Command[] = [
     cents: 100,
     livePrice: "challenge",
     fields: [{ name: "characterId", label: "Character id", kind: "number" }],
-    note: "If the throne is vacant this seats you instead of booking a match, and the response carries no matchId — that absence is the signal, not an error. A SEAT_VESTING 409 costs nothing: the refusal is raised before x402 settles.",
+    note: "This carries the fighter id and nothing else — a plan built in the Fighters panel is NOT part of what you pay for here. Selection happens later: either you submit during the window at pairing, or the fighter's standing preset is committed at the close. Set that preset before or after paying; it is free and revisable until the window shuts. If the throne is vacant this seats you instead of booking a match, and the response carries no matchId — that absence is the signal, not an error. A SEAT_VESTING 409 costs nothing: the refusal is raised before x402 settles.",
   },
   {
     id: "order_film",
@@ -845,8 +914,40 @@ export const COMMANDS: readonly Command[] = [
         kind: "number",
         hint: "Bounded by the arena, not by this console — the live range comes from GET /api/rules.",
       },
+      {
+        name: "opponent",
+        label: "Rival wallet (optional)",
+        hint: "Naming one makes this a challenge only that wallet can accept, instead of a listing anyone can take.",
+      },
+      {
+        name: "visibility",
+        label: "Visibility (optional)",
+        hint: "unlisted keeps it out of every feed and the pool. It does not hide it: the resolved page still publishes both fighters and all five coins at its URL, and it counts in both records. Needs a rival.",
+      },
+      {
+        name: "scheduledAt",
+        label: "Appointed hour (optional)",
+        hint: "ISO 8601. The verdict is enqueued at that minute — a window, not a broadcast second, because throne verdicts take the lane. Needs a rival.",
+      },
     ],
-    note: "The price is the stake. Free-form between the arena's floor and ceiling.",
+    note: "The price is the stake. Free-form between the arena's floor and ceiling. It carries no plan: a listing books a fight, and your five actions arrive either as a live submission during the window or as the fighter's standing preset, which the close commits for you.",
+  },
+  {
+    id: "accept_duel",
+    label: "Accept a challenge",
+    tier: "paid",
+    group: "Market",
+    method: "POST",
+    path: "/api/duel/:id/accept",
+    price: "the invitation",
+    cents: CALLER_PRICED,
+    maxField: true,
+    requiresFlag: "duels",
+    fields: [
+      { name: "id", label: "Duel id" },
+      { name: "characterId", label: "Your fighter", kind: "number" },
+    ],
+    note: "Settles at the invitation's stake, which the arena holds — there is no counter-offer, because a counter-offer is a new invitation. Accepting consents to every term at once: the stake, the visibility and the hour. After that the only exits are the refund matrix, however far off the hour is.",
   },
   {
     id: "take_duel",
@@ -863,7 +964,7 @@ export const COMMANDS: readonly Command[] = [
       { name: "id", label: "Duel id" },
       { name: "characterId", label: "Your fighter", kind: "number" },
     ],
-    note: "Settles at the listing's posted stake, which the arena holds. Set a maximum and the console refuses a higher quote before signing anything.",
+    note: "Settles at the listing's posted stake, which the arena holds. Set a maximum and the console refuses a higher quote before signing anything. It carries no plan: your five actions arrive either as a live submission during the window or as the fighter's standing preset, which the close commits for you.",
   },
   {
     id: "cancel_duel",
@@ -978,6 +1079,94 @@ export const COMMANDS: readonly Command[] = [
     requiresOptIn: "CONSOLE_ALLOW_GENESIS",
     fields: [{ name: "houseSlug", label: "House slug" }],
     note: "The genesis sale. Four hundred and two dollars, in one click, at the price the arena quotes. Unregistered unless CONSOLE_ALLOW_GENESIS=true, and it will still be refused by any sane ceiling.",
+  },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // The Founding Purse
+  //
+  // ⚠️ `group: "Patronage"` renders NOTHING — see the note on `Group`. These
+  // land in the rail's cost sections like everything else: the two reads under
+  // Free reads, the pledge under Paid writes. The group is metadata for a
+  // sub-header that does not exist yet.
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "patronage",
+    label: "The Founding Purse",
+    tier: "free",
+    group: "Patronage",
+    method: "GET",
+    path: "/api/patronage",
+    price: "free",
+    cents: 0,
+    // No `requiresFlag`. The manifest answers whether the campaign is open in
+    // its own `open` field rather than 404ing, exactly as `GET /api/genesis`
+    // does — so an operator can read the shape of a campaign that has not
+    // started, and a gate here would hide the one surface that says so.
+    note:
+      "What the campaign has raised, what each tier grants, how many of the capped places are left, " +
+      "and the published target model behind the goal. The raise counts confirmed pledges AND " +
+      "genesis lordships, because both fund the same world.",
+  },
+  {
+    id: "patron_scroll",
+    label: "The Patron Scroll",
+    tier: "free",
+    group: "Patronage",
+    method: "GET",
+    path: "/api/patronage/scroll",
+    price: "free",
+    cents: 0,
+    fields: [
+      { name: "limit", label: "Limit", kind: "number", optional: true, hint: "1–200. Default 50." },
+      { name: "offset", label: "Offset", kind: "number", optional: true, hint: "Where to start." },
+    ],
+    note:
+      "Every confirmed pledge in settle order, with the transaction that paid for it. A pledge is " +
+      "frozen once paid and there is no delete path, so an entry's number never shifts.",
+  },
+  {
+    id: "patronage_pledge",
+    label: "Pledge to the Founding Purse",
+    tier: "paid",
+    group: "Patronage",
+    method: "POST",
+    path: "/api/patronage/:tier",
+    // Five fixed prices, chosen by the path segment — the same shape as an
+    // exhibition tier, and priced the same way: the arena quotes, you cap.
+    price: "tier-priced",
+    cents: CALLER_PRICED,
+    maxField: true,
+    requiresFlag: "patronage",
+    /*
+      Behind its own opt-in, and NOT because the top tier is expensive — though
+      it is the largest single spend the arena offers.
+
+      This console spends a wallet the HOUSE holds. A pledge from it moves the
+      raise, the backer count and the lit marks on a public page that presents
+      all three as outside support. A Lordship is a title somebody buys FROM us,
+      so `buy_genesis` above is merely large; a pledge is a claim about who is
+      behind us, and the house cannot make that claim about itself.
+
+      Worse on a capped tier: `confirmPledge` sets `payment_id`, which freezes
+      the row, so a Benefactor or Founder pledge permanently consumes one of
+      twelve or four places and writes an undeletable Scroll entry.
+    */
+    requiresOptIn: "CONSOLE_ALLOW_PATRONAGE",
+    fields: [
+      {
+        name: "tier",
+        label: "Tier",
+        kind: "patronTier",
+        // Names only. The prices come from the canon's `patronage` block, and
+        // these five stay as the fallback for a deploy whose rules read failed.
+        options: ["coin", "torch", "herald", "benefactor", "founder"],
+        hint: "Choosing a tier fills the ceiling below from the arena's own price.",
+      },
+    ],
+    note:
+      "Recognition and canon only — no credits, no balance, nothing redeemable, and no advantage in " +
+      "any match. Final at settlement, with no refund path anywhere in the design. The lordship tier " +
+      "is not sold here: that is Buy a genesis lordship, above.",
   },
 ];
 
