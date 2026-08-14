@@ -32,3 +32,6 @@ coverage/
 # which breaks every existing clone. That is a separate decision, deliberately
 # not made here.
 /CLAUDE.md
+
+# graphify — generated knowledge graph, rebuilt with `graphify update .`
+graphify-out/
