@@ -3467,8 +3467,18 @@ code {
   background: color-mix(in srgb, var(--awaiting) 7%, transparent);
 }
 
+/*
+ * The clock, at the size of the thing it counts to.
+ *
+ * It was 20px on the same baseline as the eyebrow beside it, which read as one
+ * more field in a row of fields. This is the moment the sequences lock and the
+ * fight begins — `flex-basis: 100%` gives it its own line in the wrapping row,
+ * so the eyebrow sits above it and the notes below.
+ */
 .match-clock {
-  font-size: 20px;
+  flex-basis: 100%;
+  font-size: 40px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--awaiting);
   letter-spacing: 0.04em;
@@ -4026,6 +4036,33 @@ code {
   position: absolute;
   top: 0;
   bottom: 0;
+  /*
+   * The drain. Slower than a coin's beat on purpose — the bar should still be
+   * settling as the next exchange starts, which is what makes a run read as one
+   * fight rather than five separate results.
+   */
+  transition: width 620ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/*
+ * A coin the playback has not reached: dimmed, never hidden. The record is
+ * public the moment the verdict is — this is a replay relighting it, not a
+ * reveal withholding it — so the row keeps its height and the table never
+ * reflows as the run walks down it.
+ */
+.evi-row[data-waiting="true"] {
+  opacity: 0.3;
+}
+
+.evi-row {
+  transition: opacity 320ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evi-bar > div,
+  .evi-row {
+    transition: none;
+  }
 }
 
 .evi-bar[data-role="THRONE"] > div {

@@ -2,7 +2,14 @@
 
 import { Fragment, useState } from "react";
 import Icon from "./icon";
-import { lifebarOf, throwTotal, type LifebarCoin, type LifebarRole, type LifebarView } from "@/lib/lifebar";
+import {
+  HP_START,
+  lifebarOf,
+  throwTotal,
+  type LifebarCoin,
+  type LifebarRole,
+  type LifebarView,
+} from "@/lib/lifebar";
 import type { Exchange, MatchView } from "@/lib/match-view";
 
 /**
@@ -72,15 +79,37 @@ function AdvChip({ c, r }: { c: LifebarCoin & { advantage: Record<LifebarRole, s
   );
 }
 
-function LifeBars({ bar }: { bar: LifebarView }) {
+/**
+ * The bars at coin `n` — the record, wound forward rather than recomputed.
+ *
+ * `lifebarOf` publishes the fall and the wear PER COIN, so the state after any
+ * number of them is a prefix sum and nothing else. Nothing here decides who is
+ * losing: which side takes the fall was settled by the marks before this ran.
+ *
+ * At `n = every coin` this is exactly `bar.final` — the loser's fall sums to
+ * 100 by construction (the remainder lands on their last lost coin) and the
+ * winner's wear sums to `100 − final[winner]`. So the animation ends on the
+ * published figure rather than near it, which is the property that makes it
+ * safe to drive the same bars from a playback.
+ */
+function hpAfter(bar: LifebarView, loser: LifebarRole, n: number): Record<LifebarRole, number> {
+  const sum = (xs: number[]) => xs.slice(0, n).reduce((a, b) => a + b, 0);
+  const winner: LifebarRole = loser === "THRONE" ? "CHALLENGER" : "THRONE";
+  const out = { CHALLENGER: HP_START, THRONE: HP_START };
+  out[loser] = Math.round((HP_START - sum(bar.damage)) * 10) / 10;
+  out[winner] = Math.round((HP_START - sum(bar.wear)) * 10) / 10;
+  return out;
+}
+
+function LifeBars({ hp }: { hp: Record<LifebarRole, number> }) {
   return (
     <div className="evi-bars">
       <span className="num evi-hp" data-role="THRONE">
-        {Math.round(bar.final.THRONE)}
+        {Math.round(hp.THRONE)}
         <span className="evi-hp-unit">hp</span>
       </span>
       <div className="evi-bar" data-role="THRONE">
-        <div style={{ width: `${Math.max(0, Math.min(100, bar.final.THRONE))}%` }} />
+        <div style={{ width: `${Math.max(0, Math.min(100, hp.THRONE))}%` }} />
       </div>
       <span className="num evi-hp-note">
         HP
@@ -90,17 +119,39 @@ function LifeBars({ bar }: { bar: LifebarView }) {
         decides nothing
       </span>
       <div className="evi-bar" data-role="CHALLENGER">
-        <div style={{ width: `${Math.max(0, Math.min(100, bar.final.CHALLENGER))}%` }} />
+        <div style={{ width: `${Math.max(0, Math.min(100, hp.CHALLENGER))}%` }} />
       </div>
       <span className="num evi-hp" data-role="CHALLENGER">
-        {Math.round(bar.final.CHALLENGER)}
+        {Math.round(hp.CHALLENGER)}
         <span className="evi-hp-unit">hp</span>
       </span>
     </div>
   );
 }
 
-export default function MatchEvidence({ match }: { match: MatchView }) {
+export default function MatchEvidence({
+  match,
+  revealed,
+}: {
+  match: MatchView;
+  /**
+   * How many coins the playback above has landed.
+   *
+   * The panel used to render only the finished record, which made "Run the
+   * verdict" animate the board and leave the bars and the table sitting at
+   * their end state — the fight played out above a scoreboard that already
+   * knew the answer. The bars now drain as each coin lands and each row lights
+   * when its coin does.
+   *
+   * Omitted means the whole record, which is the state a card at rest is in and
+   * the state the panel renders with no JavaScript at all: the record is public
+   * the moment the verdict is, and this replay only relights it.
+   *
+   * A COUNT rather than a set, because coins land in order — a set would admit
+   * a fourth coin revealed before a second, which the timeline cannot produce.
+   */
+  revealed?: number;
+}) {
   /* The rows are in the DOM either way; this only toggles their visibility. */
   const [openEx, setOpenEx] = useState<ReadonlySet<number>>(new Set());
 
@@ -129,6 +180,11 @@ export default function MatchEvidence({ match }: { match: MatchView }) {
     : "THRONE";
   const matchLoser: LifebarRole = matchWinner === "THRONE" ? "CHALLENGER" : "THRONE";
 
+  /* Clamped, so a frame from a longer or shorter timeline can never make the
+     panel show more coins than the record has. */
+  const landed = Math.max(0, Math.min(exchanges.length, revealed ?? exchanges.length));
+  const hpNow = bar ? hpAfter(bar, matchLoser, landed) : null;
+
   const toggleEx = (k: number) =>
     setOpenEx((s) => {
       const next = new Set(s);
@@ -139,7 +195,7 @@ export default function MatchEvidence({ match }: { match: MatchView }) {
 
   return (
     <div className="evi">
-      {bar ? <LifeBars bar={bar} /> : null}
+      {hpNow ? <LifeBars hp={hpNow} /> : null}
 
       <div className="evi-table-wrap">
         <table className="evi-table" data-hp={hp ? "true" : undefined}>
@@ -200,6 +256,11 @@ export default function MatchEvidence({ match }: { match: MatchView }) {
                 <Fragment key={k}>
                   <tr
                     className="evi-row"
+                    /* Coins the playback has not reached DIM — they are never
+                       hidden. The record is public the moment the verdict is,
+                       and a row that vanished would be this panel concealing
+                       evidence to stage a surprise. Dimming relights instead. */
+                    data-waiting={k >= landed ? "true" : undefined}
                     onClick={() => toggleEx(k)}
                     aria-expanded={openEx.has(k)}
                   >
@@ -277,8 +338,13 @@ export default function MatchEvidence({ match }: { match: MatchView }) {
           </tbody>
           {/* The ledger's footer: column sums at the bottom of the columns they
               total. The aggregate is a display figure and the label carries its
-              caveat; the damage total is the loser's whole drain. */}
-          {bar ? (
+              caveat; the damage total is the loser's whole drain.
+
+              Gated on the run having FINISHED, the arena's own rule: these are
+              totals over every coin, and printing them beside a table that has
+              only lit two of five states a sum of numbers the reader cannot yet
+              see. It returns the moment the last coin lands. */}
+          {bar && landed >= exchanges.length ? (
             <tfoot>
               <tr>
                 <td colSpan={2} className="evi-foot-label">
