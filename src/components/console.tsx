@@ -20,6 +20,7 @@ import type { Envelope } from "@/lib/envelope";
 import { byId, COMMANDS, type Command } from "@/lib/commands";
 import type { PatronTierOption } from "@/lib/patronage";
 import { logTime } from "@/lib/format";
+import { revealResultPane } from "@/lib/reveal";
 
 /**
  * The instrument panel.
@@ -165,6 +166,21 @@ export default function Console({
       if (typeof forgedId === "number") {
         setForged((prev) => ({ characterId: forgedId, nonce: (prev?.nonce ?? 0) + 1 }));
       }
+
+      /*
+        A SETTLED command puts its result in another card, so go there.
+
+        Gated on `settled`, which is the receipt the payment produced rather
+        than anything this client inferred — so a free read that happens to
+        answer with a match id moves the page nowhere, and neither does a
+        refusal. Reads are how an operator browses, and a browse that hijacks
+        the scroll is the feature becoming an annoyance; an error belongs on
+        screen under the button that caused it, not scrolled away from.
+
+        Which card is `revealResultPane`'s call, off the same two fields the
+        forge watch above reads and under the same law.
+      */
+      if (data.settled && !data.error) revealResultPane(data.body);
       if (data.ceiling?.enabled) {
         setLive((prev) => ({
           ...prev,

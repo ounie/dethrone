@@ -20,6 +20,7 @@ import {
   type Combo,
 } from "@/lib/combos";
 import { stamp } from "@/lib/format";
+import { FIGHTERS_PANE } from "@/lib/reveal";
 
 /**
  * Your fighters, their actions, and a plan waiting for a window.
@@ -693,7 +694,8 @@ export default function FightersPane({
       drag={drag}
       icon="swords"
       title="Fighters"
-      className="pane-fighters"
+      /* The class a settled forge scrolls to — see `lib/reveal.ts`. */
+      className={FIGHTERS_PANE}
       actions={
         <button
           type="button"
