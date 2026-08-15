@@ -37,6 +37,40 @@ export interface MatchAction {
   type: string;
 }
 
+type ContestRole = "CHALLENGER" | "THRONE";
+
+/**
+ * A coin's stored contest record, ROLE-keyed — the evidence the record table
+ * and the life bars render.
+ *
+ * The wire keys these by SIDE (`A`/`B`, the per-coin permutation the judges
+ * were shown) and publishes `permutation` beside them for exactly this
+ * translation — the arena's own reveal performs the identical mapping
+ * server-side (`revealContestsOf`). Mapping a published key through a
+ * published map is a read, not a decision: nothing here resolves a winner
+ * (`winnerRole` remains the arena's word) and every number is carried as it
+ * arrived. `variety` follows the arena's translation too: the record's bonus
+ * where `firstUse` is true, zero where it is not.
+ *
+ * `weights`, `modScale` and `varietyBonus` are the record's own carried
+ * inputs, kept so the spread column can derive from the record itself rather
+ * than from a copy of the arena's frozen constants.
+ */
+export interface ExchangeContest {
+  roll: Record<ContestRole, number>;
+  dice: Record<ContestRole, number[]>;
+  mod: Record<ContestRole, number>;
+  variety: Record<ContestRole, number>;
+  advantage: Record<ContestRole, "advantage" | "disadvantage" | "none">;
+  flourish: Record<ContestRole, boolean>;
+  stumble: Record<ContestRole, boolean>;
+  tiePath: "none" | "mod" | "seeded";
+  tieBreakRolls: Record<ContestRole, number[]>;
+  weights: { menace: number; originality: number };
+  modScale: number;
+  varietyBonus: number;
+}
+
 export interface MatchSide {
   name: string | null;
   characterId: number | null;
@@ -55,6 +89,9 @@ export interface Exchange {
   winnerRole: string | null;
   /** The judge's sentence for this coin. */
   oneLine: string | null;
+  /** The coin's contest record, when the verdict carries one. Null degrades
+   *  the evidence panel, never the playback. */
+  contest: ExchangeContest | null;
 }
 
 export interface MatchView {
@@ -134,6 +171,81 @@ function action(raw: unknown): MatchAction | null {
 }
 
 /**
+ * Narrow one coin's `contest` through its `permutation`, or null.
+ *
+ * All-or-nothing on purpose: a record with one malformed field renders as no
+ * record, because a partially-read throw would put a plausible wrong number in
+ * an official-looking table — the same "a blank is silent while a plausible
+ * wrong value is a claim" rule the fighter identity read already follows.
+ */
+function contestOf(raw: unknown, permRaw: unknown): ExchangeContest | null {
+  const c = raw as Record<string, unknown> | null | undefined;
+  const p = permRaw as Record<string, unknown> | null | undefined;
+  if (!c || typeof c !== "object" || !p) return null;
+  const roleA = p.A;
+  const roleB = p.B;
+  const isRole = (v: unknown): v is ContestRole => v === "CHALLENGER" || v === "THRONE";
+  if (!isRole(roleA) || !isRole(roleB) || roleA === roleB) return null;
+
+  const byRole = <T>(field: unknown, read: (v: unknown) => T | null): Record<ContestRole, T> | null => {
+    const o = field as Record<string, unknown> | null | undefined;
+    if (!o || typeof o !== "object") return null;
+    const a = read(o.A);
+    const b = read(o.B);
+    if (a === null || b === null) return null;
+    return { [roleA]: a, [roleB]: b } as Record<ContestRole, T>;
+  };
+  const int = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) ? v : null);
+  const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null);
+  const ints = (v: unknown): number[] | null =>
+    Array.isArray(v) && v.every((n) => typeof n === "number" && Number.isInteger(n)) ? (v as number[]) : null;
+
+  const roll = byRole(c.roll, int);
+  const dice = byRole(c.dice, ints);
+  const mod = byRole(c.mods, int);
+  const firstUse = byRole(c.firstUse, bool);
+  const advantage = byRole(c.advantage, (v) =>
+    v === "advantage" || v === "disadvantage" || v === "none" ? v : null,
+  );
+  const flourish = byRole(c.flourish, bool);
+  const stumble = byRole(c.stumble, bool);
+  const tieBreakRolls = byRole(c.tieBreakRolls, ints);
+  const tiePath = c.tiePath === "none" || c.tiePath === "mod" || c.tiePath === "seeded" ? c.tiePath : null;
+  const w = c.weights as Record<string, unknown> | null | undefined;
+  const menace = int(w?.menace);
+  const originality = int(w?.originality);
+  const modScale = typeof c.modScale === "number" && c.modScale > 0 ? c.modScale : null;
+  const varietyBonus = int(c.variety);
+
+  if (
+    !roll || !dice || !mod || !firstUse || !advantage || !flourish || !stumble ||
+    !tieBreakRolls || tiePath === null || menace === null || originality === null ||
+    modScale === null || varietyBonus === null
+  ) {
+    return null;
+  }
+
+  return {
+    roll,
+    dice,
+    mod,
+    // The arena's own translation: the record's bonus where firstUse, else 0.
+    variety: {
+      CHALLENGER: firstUse.CHALLENGER ? varietyBonus : 0,
+      THRONE: firstUse.THRONE ? varietyBonus : 0,
+    },
+    advantage,
+    flourish,
+    stumble,
+    tiePath,
+    tieBreakRolls,
+    weights: { menace, originality },
+    modScale,
+    varietyBonus,
+  };
+}
+
+/**
  * Pair the two sequences with the coins, by index.
  *
  * The arena publishes three parallel arrays — `sequences.challenger.actions`,
@@ -168,6 +280,7 @@ function exchanges(body: Record<string, unknown>): Exchange[] {
       // already done it.
       winnerRole: str(coin.winnerRole),
       oneLine: str(coin.one_line),
+      contest: contestOf(coin.contest, coin.permutation),
     });
   }
   return out;

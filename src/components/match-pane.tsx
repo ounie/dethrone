@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Icon from "./icon";
+import MatchEvidence from "./match-evidence";
 import Panel, { type PanelDrag } from "./panel";
 import Time from "./time";
 import {
@@ -99,7 +100,9 @@ function bodyOf(data: Record<string, unknown>): Record<string, unknown> | undefi
  */
 const MEDALLION = {
   spinning: "https://dethrone.bot/brand/medallion-silver.webp",
-  THRONE: "https://dethrone.bot/brand/medallion-throne.webp",
+  // The CROWN is the seat's face on every surface a coin winner shows — the
+  // arena retired its `medallion-throne` art with the evidence panel.
+  THRONE: "https://dethrone.bot/brand/medallion-crown.webp",
   CHALLENGER: "https://dethrone.bot/brand/medallion-challenger.webp",
 } as const;
 
@@ -801,6 +804,14 @@ export default function MatchPane({
                   </p>
                 </div>
               )}
+
+              {/*
+                The evidence panel — the arena's record table and life bars,
+                revealed by default the way the arena's own match page now
+                shows them: the record is public the moment the verdict is,
+                and the playback above is a replay, not a gate.
+              */}
+              {judged && <MatchEvidence match={match} />}
 
               <div className="picker-row">
                 <button

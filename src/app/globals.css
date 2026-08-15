@@ -3958,3 +3958,322 @@ code {
   object-fit: contain;
   flex: none;
 }
+
+/* ── Match evidence — the arena's verdict card, ported ─────────────────────
+   Identity colours are the arena's law: throne GOLD, challenger STEEL
+   (#a8c0d4), and red (#d45b4a) reserved exclusively for damage — red as an
+   identity collides with red as damage in the record table. */
+.evi {
+  display: grid;
+  gap: 10px;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border-hairline);
+}
+
+.evi-bars {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.evi-hp {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.evi-hp[data-role="THRONE"] {
+  color: #e8c97a;
+}
+
+.evi-hp[data-role="CHALLENGER"] {
+  color: #a8c0d4;
+}
+
+.evi-hp-unit {
+  margin-left: 3px;
+  font-size: 8px;
+  font-weight: 400;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.evi-hp-note {
+  text-align: center;
+  font-size: 7.5px;
+  line-height: 1.7;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* One side's bar, anchored at the CENTRE edge so its far end sits on the
+   reading and damage visibly pulled it back toward the middle. */
+.evi-bar {
+  position: relative;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--ink-900);
+  border: 1px solid rgba(208, 164, 79, 0.35);
+}
+
+.evi-bar[data-role="CHALLENGER"] {
+  border-color: rgba(122, 147, 168, 0.35);
+}
+
+.evi-bar > div {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.evi-bar[data-role="THRONE"] > div {
+  right: 0;
+  background: linear-gradient(to right, #8a5c1c, #d0a44f);
+}
+
+.evi-bar[data-role="CHALLENGER"] > div {
+  left: 0;
+  background: linear-gradient(to right, #7a93a8, #3e5468);
+}
+
+.evi-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-hairline);
+  border-radius: 5px;
+  background: var(--ink-950);
+}
+
+.evi-table {
+  width: 100%;
+  min-width: 400px;
+  border-collapse: collapse;
+  text-align: center;
+  font-size: 11.5px;
+}
+
+.evi-table[data-hp="true"] {
+  min-width: 560px;
+}
+
+.evi-table th {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border-hairline);
+  border-left: 1px solid var(--border-hairline);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--parchment-400);
+  background: var(--ink-900);
+  vertical-align: top;
+}
+
+.evi-table th:first-child,
+.evi-table td:first-child {
+  border-left: 0;
+}
+
+.evi-table th[data-role="THRONE"] {
+  color: var(--gold-300);
+}
+
+.evi-table th[data-role="CHALLENGER"] {
+  color: #a8c0d4;
+}
+
+.evi-th-sub {
+  display: block;
+  font-size: 7.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.evi-table td {
+  padding: 8px 9px;
+  border-top: 1px solid var(--border-hairline);
+  border-left: 1px solid var(--border-hairline);
+  vertical-align: middle;
+}
+
+.evi-row {
+  cursor: pointer;
+}
+
+.evi-row:hover {
+  background: rgba(243, 236, 224, 0.015);
+}
+
+.evi-coin {
+  font-size: 15px;
+  color: var(--parchment-200);
+}
+
+.evi-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+/* A gilt ring is a clash — a tie held by the path the notes name. */
+.evi-mark[data-clash="true"] {
+  border: 2px solid var(--gold-400);
+}
+
+.evi-mark img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.evi-throw {
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+
+.evi-throw[data-role="THRONE"] {
+  color: var(--gold-300);
+}
+
+.evi-throw[data-role="CHALLENGER"] {
+  color: #a8c0d4;
+}
+
+.evi-throw[data-lost="true"] {
+  opacity: 0.6;
+}
+
+.evi-chip {
+  display: inline-block;
+  min-width: 24px;
+  padding: 1px 3px;
+  border: 1px solid var(--border-hairline);
+  border-radius: 3px;
+  background: var(--ink-900);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parchment-400);
+}
+
+.evi-spread {
+  color: var(--text-faint);
+}
+
+/* Damage, and only damage. Never an identity. */
+.evi-dmg {
+  white-space: nowrap;
+  font-weight: 600;
+  color: #d45b4a;
+}
+
+.evi-dmg-line {
+  display: block;
+}
+
+.evi-dmg-wear {
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.evi-dmg-to {
+  display: block;
+  font-size: 7.5px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.evi-ex td {
+  background: var(--ink-900);
+  text-align: left;
+  padding: 8px 12px;
+}
+
+.evi-ex-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 18px;
+  row-gap: 4px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--parchment-400);
+}
+
+.evi-ex-side {
+  margin-right: 6px;
+  font-size: 8.5px;
+  font-style: normal;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.evi-ex-side[data-role="THRONE"] {
+  color: var(--gold-300);
+}
+
+.evi-ex-side[data-role="CHALLENGER"] {
+  color: #a8c0d4;
+}
+
+.evi-ex-notes {
+  font-size: 9.5px;
+  font-style: normal;
+  letter-spacing: 0.05em;
+  color: var(--gold-300);
+}
+
+.evi-foot-label {
+  text-align: right;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--parchment-400);
+}
+
+.evi-foot-label .num {
+  display: block;
+}
+
+.evi-table tfoot td {
+  border-top-width: 2px;
+  background: var(--ink-900);
+}
+
+.evi-foot-total {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.evi-foot-total[data-role="THRONE"] {
+  color: #e8c97a;
+}
+
+.evi-foot-total[data-role="CHALLENGER"] {
+  color: #a8c0d4;
+}
+
+.evi-key,
+.evi-law {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+.evi-key {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.evi-law {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}

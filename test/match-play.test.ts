@@ -20,6 +20,7 @@ const exchanges: Exchange[] = roles.map((winnerRole, index) => ({
   throne: { id: `t${index}`, text: `throne ${index}`, type: "bind" },
   winnerRole,
   oneLine: `coin ${index}`,
+  contest: null,
 }));
 
 const targets = { CHALLENGER: [1, 2, 3, 4, 5], THRONE: [5, 4, 3, 2, 1] };

@@ -229,6 +229,85 @@ describe("the exchanges pair by position", () => {
   });
 });
 
+describe("the contest record is translated, never resolved", () => {
+  /** A stored `contest-v1` record as the wire carries it — SIDE-keyed, with
+   *  the permutation beside it. Field names are the arena's. */
+  const CONTEST = {
+    v: "contest-v1",
+    weights: { menace: 1, originality: 3 },
+    modScale: 0.5,
+    variety: 1,
+    mods: { A: 50, B: 70 },
+    advantage: { A: "advantage", B: "disadvantage" },
+    dice: { A: [11, 4], B: [7, 12] },
+    roll: { A: 11, B: 7 },
+    firstUse: { A: true, B: false },
+    totals: { A: 62, B: 77 },
+    winnerSide: "B",
+    tiePath: "none",
+    tieBreakRolls: { A: [], B: [] },
+    seedRef: "a".repeat(64),
+    flourish: { A: false, B: false },
+    stumble: { A: false, B: false },
+  };
+
+  const withContest = (permutation: { A: string; B: string }) => ({
+    ...BODY,
+    verdict: {
+      ...BODY.verdict,
+      coins: [{ ...BODY.verdict.coins[0], permutation, contest: CONTEST }],
+    },
+  });
+
+  it("keys every field by ROLE through the published permutation", () => {
+    const m = readMatch(withContest({ A: "CHALLENGER", B: "THRONE" }))!;
+    const c = m.exchanges[0].contest!;
+    expect(c.roll).toEqual({ CHALLENGER: 11, THRONE: 7 });
+    expect(c.mod).toEqual({ CHALLENGER: 50, THRONE: 70 });
+    expect(c.advantage).toEqual({ CHALLENGER: "advantage", THRONE: "disadvantage" });
+    expect(c.dice.THRONE).toEqual([7, 12]);
+    // The arena's own translation: the record's bonus where firstUse, else 0.
+    expect(c.variety).toEqual({ CHALLENGER: 1, THRONE: 0 });
+    expect(c.weights).toEqual({ menace: 1, originality: 3 });
+    expect(c.modScale).toBe(0.5);
+    expect(c.varietyBonus).toBe(1);
+  });
+
+  it("follows a flipped permutation instead of assuming A is the challenger", () => {
+    const m = readMatch(withContest({ A: "THRONE", B: "CHALLENGER" }))!;
+    const c = m.exchanges[0].contest!;
+    expect(c.roll).toEqual({ THRONE: 11, CHALLENGER: 7 });
+    expect(c.variety).toEqual({ THRONE: 1, CHALLENGER: 0 });
+  });
+
+  it("degrades a malformed record to null, whole — never a partial read", () => {
+    for (const broken of [
+      { ...CONTEST, roll: { A: 11 } },
+      { ...CONTEST, mods: { A: "50", B: 70 } },
+      { ...CONTEST, tiePath: "declared" },
+      null,
+      "contest",
+    ]) {
+      const m = readMatch({
+        ...BODY,
+        verdict: {
+          ...BODY.verdict,
+          coins: [{ ...BODY.verdict.coins[0], contest: broken }],
+        },
+      })!;
+      expect(m.exchanges[0].contest).toBeNull();
+    }
+    // A permutation that does not name both roles is no permutation.
+    const m = readMatch(withContest({ A: "CHALLENGER", B: "CHALLENGER" }))!;
+    expect(m.exchanges[0].contest).toBeNull();
+  });
+
+  it("carries nothing on a pre-contest coin", () => {
+    const m = readMatch(BODY)!;
+    expect(m.exchanges.every((e) => e.contest === null)).toBe(true);
+  });
+});
+
 describe("a live selection window", () => {
   it("is read from the arena's answer, never inferred", () => {
     const live = readMatch({
