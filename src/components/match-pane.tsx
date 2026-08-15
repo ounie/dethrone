@@ -98,6 +98,23 @@ function bodyOf(data: Record<string, unknown>): Record<string, unknown> | undefi
  * `<img>` against a public path on the arena, exactly as the fighter portraits
  * already are. The console never composes an asset path of its own.
  */
+/**
+ * The follow cadence, and where it gives up.
+ *
+ * Fast while the match is in `verdict` — the selection window is counting down
+ * or the panel is sitting, and both end in something worth seeing within
+ * seconds. Slow otherwise: a queued match can sit for a long time and nothing
+ * about it changes minute to minute.
+ *
+ * `FOLLOW_READS_MAX` is `fighters-pane.tsx`'s `QUIET_READS_BEFORE_PAUSE` rule
+ * with a longer leash — 120 reads is about fourteen minutes at the fast
+ * cadence and an hour at the slow one, which covers a panel sitting and then
+ * stops rather than polling a forgotten tab all night.
+ */
+const FOLLOW_FAST_MS = 7_000;
+const FOLLOW_SLOW_MS = 30_000;
+const FOLLOW_READS_MAX = 120;
+
 const MEDALLION = {
   spinning: "https://dethrone.bot/brand/medallion-silver.webp",
   // The CROWN is the seat's face on every surface a coin winner shows — the
@@ -282,6 +299,10 @@ export default function MatchPane({
   const [frame, setFrame] = useState<Frame | null>(null);
   const [running, setRunning] = useState(false);
 
+  /** Reads spent following the current match, and whether the follow gave up. */
+  const followReads = useRef(0);
+  const [followStopped, setFollowStopped] = useState(false);
+
   const autoplay = useSyncExternalStore(subscribeMatchPrefs, autoplaySnapshot, serverFalse);
   const sound = useSyncExternalStore(subscribeMatchPrefs, soundSnapshot, serverFalse);
 
@@ -327,6 +348,10 @@ export default function MatchPane({
       setError(null);
       runId.current += 1;
       setRunning(false);
+      // A read the operator asked for restarts the follow — that press IS the
+      // "resuming is one press" the pause below promises.
+      followReads.current = 0;
+      setFollowStopped(false);
       try {
         const data = await act("match", { id: trimmed });
         const view = readMatch(bodyOf(data) ?? null);
@@ -366,6 +391,82 @@ export default function MatchPane({
     },
     [loadMenus, houses.size],
   );
+
+  /**
+   * Re-read a match that has not been judged yet, without disturbing the card.
+   *
+   * Deliberately NOT `load()`. That one is the operator's action: it clears the
+   * error, resets the frame, drops the menus, switches to the Match tab and
+   * flips `busy`, all of which are right for "I asked for this match" and wrong
+   * for a background re-read — an operator watching a countdown would see the
+   * card blink every few seconds.
+   *
+   * Everything it touches is a field that can actually change while a match is
+   * in flight: the selection window, its two submitted bits, and the verdict.
+   */
+  const follow = useCallback(
+    async (id: string) => {
+      let view: MatchView | null = null;
+      try {
+        const data = await act("match", { id });
+        view = readMatch(bodyOf(data) ?? null);
+      } catch {
+        /*
+          A failed background read is not an error the operator has to dismiss.
+          It leaves the card exactly as it was and the next tick tries again —
+          the alternative is a transport blip painting `CONSOLE_TRANSPORT` over
+          a match that is fine.
+        */
+        return;
+      }
+      if (!view) return;
+      followReads.current += 1;
+      if (followReads.current >= FOLLOW_READS_MAX) setFollowStopped(true);
+      setMatch(view);
+      setReadAt(new Date().toISOString());
+      if (!view.verdict || view.exchanges.length === 0) return;
+      /*
+        The verdict landed while the card was watching.
+
+        It plays — and it plays whatever the Auto toggle says, because that
+        toggle governs a RECORD being opened ("a judged match runs as soon as
+        it opens"), and this is not that. A verdict arriving on a match whose
+        countdown you have been watching is the event itself, and following a
+        live match is already the opt-in.
+      */
+      setFrame(finalFrame(view.exchanges, view.actionIds, view.verdict.winner));
+      void loadMenus(view);
+      setRunning(true);
+    },
+    [loadMenus],
+  );
+
+  /*
+    Follow an unresolved match to its verdict.
+
+    "Nothing on this card polls on its own" was true and is no longer: a card
+    that printed a countdown and then sat still through 00:00 told the operator
+    a fight was about to start and showed them none of it. Every read here is
+    the same `match` command the card already runs, priced at zero by the
+    catalogue, so this cannot spend — the pane's one hard rule is untouched,
+    and `fighters-pane.tsx` has polled a free read on a timer since it shipped.
+
+    Bounded four ways, because an unbounded poller in a console left open
+    overnight is its own kind of bug. It runs only while a match is loaded AND
+    unjudged AND the Match tab is showing; it stops the instant a verdict lands;
+    it slows to 30s outside the one state where seconds matter (`verdict` — the
+    selection window, and the panel sitting behind it); and it gives up after
+    `FOLLOW_READS_MAX`, the fighters-pane rule stated there as "stop asking,
+    rather than ask forever. Resuming is one press."
+  */
+  const followId = tab === "match" && match && !match.verdict ? match.matchId : null;
+  const followFast = match?.queueState === "verdict";
+  useEffect(() => {
+    if (!followId || followStopped) return;
+    const every = followFast ? FOLLOW_FAST_MS : FOLLOW_SLOW_MS;
+    const timer = setInterval(() => void follow(followId), every);
+    return () => clearInterval(timer);
+  }, [followId, followFast, followStopped, follow]);
 
   const loadHistory = useCallback(async (which: MatchFilter) => {
     setBusy(true);
@@ -664,7 +765,7 @@ export default function MatchPane({
                     </span>
                   )}
                   <span className="muted match-clock-note">
-                    by this browser&rsquo;s clock · closes{" "}
+                    until the sequences lock · by this browser&rsquo;s clock · closes{" "}
                     {match.selection.closesAt ? <Time iso={match.selection.closesAt} /> : "—"}
                   </span>
                   <span className="muted">
@@ -811,7 +912,15 @@ export default function MatchPane({
                 shows them: the record is public the moment the verdict is,
                 and the playback above is a replay, not a gate.
               */}
-              {judged && <MatchEvidence match={match} />}
+              {/*
+                The bars and the table follow the playback, off the SAME frame
+                the board reads — `settledCount` is already the count of coins
+                whose mark has landed, so there is no second answer to "how far
+                has this got". At rest the frame is the finished one and the
+                panel is the whole record, which is what it renders with no
+                JavaScript at all.
+              */}
+              {judged && <MatchEvidence match={match} revealed={settledCount} />}
 
               <div className="picker-row">
                 <button
@@ -838,8 +947,19 @@ export default function MatchPane({
 
               {!judged && (
                 <p className="field-hint">
-                  Not judged yet. The exchanges appear when the arena publishes them — re-read to
-                  ask again. Nothing on this card polls on its own.
+                  {followStopped ? (
+                    <>
+                      Not judged yet, and this card has stopped asking — re-read to follow it
+                      again.
+                    </>
+                  ) : (
+                    <>
+                      Not judged yet. This card is following the match: it re-reads until the
+                      arena publishes a verdict, and plays it here the moment it lands.
+                    </>
+                  )}{" "}
+                  Every read is the free <span className="num">match</span> command; nothing
+                  on this card can spend.
                 </p>
               )}
 
