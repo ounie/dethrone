@@ -15,6 +15,7 @@ import {
 } from "@/lib/match-view";
 import { buildTimeline, finalFrame, initialFrame, type Frame, type Side } from "@/lib/match-play";
 import { createMatchSound, type MatchSound } from "@/lib/match-audio";
+import { MATCH_PANE } from "@/lib/reveal";
 import { crestFor, readHouses, type House } from "@/lib/houses";
 import {
   MATCH_FILTERS,
@@ -626,6 +627,8 @@ export default function MatchPane({
       drag={drag}
       icon="swords"
       title="Match"
+      /* The class a settled entry scrolls to — see `lib/reveal.ts`. */
+      className={MATCH_PANE}
       actions={
         <>
           <button
