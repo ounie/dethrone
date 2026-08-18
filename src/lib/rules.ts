@@ -69,6 +69,22 @@ export interface Rules {
    */
   actions: { sequenceLength: number | null; menuSize: number | null };
   /**
+   * The Rail, as the canon publishes it.
+   *
+   * `enabled` decides whether a market command is offered at all — the nav rule
+   * again. `minPositionCents` exists because a position is CALLER-PRICED: the
+   * amount you pay is your stake, so there is no 402 to read a price off, and a
+   * card arming that field would otherwise be picking a number for the operator.
+   * Null where the canon published none, and the caller must then leave the
+   * field blank rather than invent one.
+   */
+  rail: {
+    enabled: boolean;
+    minPositionCents: number | null;
+    rakeBps: number | null;
+    note: string | null;
+  };
+  /**
    * The Founding Purse's tiers, straight from the canon.
    *
    * Published because a form cannot be built without them: the pledge command
@@ -118,6 +134,7 @@ const UNREACHABLE: Rules = {
   forgeNote: null,
   duel: { enabled: false, minStakeCents: null, maxStakeCents: null, note: null },
   actions: { sequenceLength: null, menuSize: null },
+  rail: { enabled: false, minPositionCents: null, rakeBps: null, note: null },
   patronage: [],
   features: {},
   arena: null,
@@ -135,8 +152,10 @@ function shape(body: unknown, interfaceVersion: string | null): Rules {
   const duel = (b.duel ?? {}) as Record<string, unknown>;
   const actions = (b.actions ?? {}) as Record<string, unknown>;
   const patronage = (b.patronage ?? {}) as Record<string, unknown>;
+  const rail = (b.rail ?? {}) as Record<string, unknown>;
 
   const duelEnabled = duel.enabled === true;
+  const railEnabled = rail.enabled === true;
 
   return {
     reachable: true,
@@ -157,6 +176,15 @@ function shape(body: unknown, interfaceVersion: string | null): Rules {
     actions: {
       sequenceLength: num(actions.sequenceLength),
       menuSize: num(actions.menuSize),
+    },
+    rail: {
+      // Absent is OFF. An arena that predates the block publishes nothing, and
+      // offering a market command against it would be the nav-item-that-404s
+      // failure — the same reading `duelEnabled` takes one field up.
+      enabled: railEnabled,
+      minPositionCents: num(rail.minPositionCents),
+      rakeBps: num(rail.rakeBps),
+      note: typeof rail.note === "string" && rail.note ? rail.note : null,
     },
     /*
       Each row validated individually and dropped if it is not whole, rather
@@ -186,10 +214,15 @@ function shape(body: unknown, interfaceVersion: string | null): Rules {
         priceLabel: row.priceLabel as string,
         cap: num(row.cap),
       })),
-    // Only `duels` is published directly. The rest are discovered the honest
-    // way — a 404 that carries the interface header — rather than guessed at
-    // here, because a guess would be the console deciding a rule.
-    features: { duels: duelEnabled },
+    // `duels` and `rail` are published directly; the rest are discovered the
+    // honest way — a 404 that carries the interface header — rather than guessed
+    // at here, because a guess would be the console deciding a rule.
+    //
+    // The Rail's flag matters more than most: with it off every one of its
+    // routes 404s, and a market command offered against that is the nav item
+    // that 404s. House Cards themselves are NOT gated on it — the house books
+    // those whether or not anybody can back a fighter.
+    features: { duels: duelEnabled, rail: railEnabled },
     arena:
       typeof (b.arena as { slug?: unknown } | undefined)?.slug === "string"
         ? {

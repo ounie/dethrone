@@ -571,6 +571,25 @@ code {
   color: var(--text-faint);
 }
 
+/* Pushed to the trailing edge so it lands under the copy and explorer buttons
+   in the address row above — the three things you can DO to this card read as
+   one column rather than one of them floating mid-sentence.
+
+   `align-self` because the row is baseline-aligned for the numeral, and a
+   28px button on a text baseline hangs below the card's own padding. */
+.wallet-refresh {
+  margin-left: auto;
+  align-self: center;
+}
+
+/* Not `opacity`, which would dim the icon toward the panel and read as absent.
+   The ellipsis beside it is what says "working"; the cursor says "not yet". */
+.wallet-refresh:disabled {
+  cursor: default;
+  color: var(--text-faint);
+  border-color: transparent;
+}
+
 /* ── Ceiling meter ────────────────────────────────────────────────────────── */
 
 .masthead-meter {
@@ -2152,6 +2171,61 @@ code {
   font-size: 11px;
 }
 
+/*
+ * The three arm buttons carry a resting border. `.icon-btn` does not.
+ *
+ * Everywhere else in this console an `.icon-btn` sits in a panel header or
+ * beside a field, where its neighbours are already framed and the icon plus the
+ * uppercase label is enough to read as pressable. This row is three of them in
+ * open space under a fighter's detail, and borderless they read as a caption —
+ * an operator reported hovering to find out which words were buttons, which is
+ * a control discovered by accident rather than by looking.
+ *
+ * ## Neutral, and it has to stay neutral
+ *
+ * A hairline and a flat panel fill, going gilt on hover exactly as `.icon-btn`
+ * already does. Deliberately NOT ember and deliberately not a filled button:
+ * `globals.css`'s first paragraph spends ember fill on the one control that
+ * settles an amount now, and these settle nothing — they select a catalogue
+ * command and fill its fields, which is what `test/fighters-pane.test.ts`
+ * asserts at the AST level. Three ember-framed buttons above the sentence
+ * "nothing here settles an amount" would be the screen contradicting its own
+ * caption in the louder of the two languages.
+ *
+ * ## Disabled has to look it, now more than before
+ *
+ * Borderless, a disabled arm button was merely dim text among dim text. Framed,
+ * it would look exactly like a live control until pressing it did nothing — so
+ * the frame is what comes off. Scoped tighter than `.icon-btn:hover`, which
+ * would otherwise light a gilt edge on a button that cannot fire.
+ */
+.arm-row .icon-btn {
+  border-color: var(--border-hairline);
+  background: var(--bg-panel-flat);
+}
+
+/*
+ * Hover reads as gold, not as a slightly lighter hairline.
+ *
+ * `.icon-btn:hover` lifts the edge to `--border-gilt`, which is gold at 34%
+ * alpha — enough to notice on a borderless control appearing out of nothing,
+ * and almost nothing against a border that is already there. These three now
+ * rest at a hairline, so the hover has to travel further to say the same thing.
+ *
+ * `--gold-400` is the frame material, per the colour paragraph at the top of
+ * this file, and is the right token: gold is a material here, and this is a
+ * frame. Still deliberately not ember — nothing in this row settles an amount.
+ */
+.arm-row .icon-btn:hover:not(:disabled) {
+  border-color: var(--gold-400);
+}
+
+.arm-row .icon-btn:disabled {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
 /* The empty Stable, and the one thing to do about it. No hairline and no top
    border: `.arm-row` earns those by sitting under a fighter's detail, and here
    there is nothing above to be separated from. */
@@ -2188,6 +2262,290 @@ code {
   border-radius: var(--radius-sm);
   background: var(--bg-inset);
   padding: var(--s3);
+}
+
+/* ── Duel pool ────────────────────────────────────────────────────────────── */
+
+.duels-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4);
+  min-width: 0;
+}
+
+/*
+ * House Cards.
+ *
+ * A card is a FIXTURE — two fighters facing each other — and not a listing with
+ * a control at the end, so it deliberately does not borrow `.duel-row`'s five
+ * tracks. Each row is a small stack: the two sides across the top, then the
+ * arena and the bell, then the market if the card carries one, then the two
+ * buttons that arm a position. Everything is bordered as one block, because the
+ * market belongs to the fixture above it and a flat list of the same rows would
+ * say the opposite — the arena's own strip had exactly that bug.
+ */
+.card-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.card-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-panel-flat);
+  font-size: 11.5px;
+  min-width: 0;
+}
+
+/* Three tracks: the two sides at the outer edges with `vs` between them, which
+   is the geometry that makes a fixture read as a confrontation rather than as a
+   list of two names. `minmax(0, 1fr)` on both sides so long fighter names
+   truncate instead of pushing the middle around. */
+.card-fixture {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+/* The whole fixture is the link. `display: block` and no colour of its own —
+   the row already reads as a row, and an underlined blue block would be the
+   browser's opinion rather than this system's. */
+.card-open {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+}
+
+.card-open:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.card-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.card-side.right {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.card-names {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* 3:4 at 30px, the forge's own aspect, cropped to the head — a full-body plate
+   scaled to a thumbnail is a smudge and the face is the only legible part. */
+.card-face {
+  width: 30px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: cover;
+  object-position: center 18%;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+}
+
+.card-face.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+}
+
+.card-when-right {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.card-open-hint {
+  color: var(--ember-400);
+}
+
+.card-fighter {
+  color: var(--text-display);
+}
+
+.card-meta {
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.card-vs {
+  color: var(--text-faint);
+}
+
+.card-when {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s2);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  min-width: 0;
+}
+
+.card-arena {
+  min-width: 0;
+}
+
+/* The market, on its own hairline. Pools at the edges under the fighter each
+   belongs to, open interest between them — the same left/right/centre reading
+   as the fixture above, so a pool is never ambiguous about whose it is. */
+.card-market {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s2);
+  padding-top: 6px;
+  border-top: 1px solid var(--border-hairline);
+}
+
+.card-pool {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.card-pool.right {
+  justify-content: flex-end;
+}
+
+/* Teal, the lane colour: a House Card settles nothing against the seat, and the
+   pool beside it is not the arena's money. Ember is reserved for the one button
+   that settles an amount now, and neither of these is that button. */
+.card-price {
+  color: var(--teal-400);
+}
+
+.card-oi {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.card-halted {
+  color: var(--text-faint);
+}
+
+.duel-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+/*
+ * Deliberately the same geometry as `.tool-row` and the rail's `.cmd`: a
+ * listing, a tool call and a catalogue row are all "one thing, with a control
+ * at the end". Repeating one anatomy is what keeps a dense screen legible.
+ *
+ * `auto` on the stake rather than a fixed track, because the arena writes it as
+ * a string and this file does not get to decide how many digits that is.
+ */
+/* FIVE tracks for five children: id, arena, stake, listed, control. It was
+   written with four and the Take button wrapped onto a second line inside every
+   row — a grid with fewer tracks than children does not overflow, it reflows,
+   which is why this looked like a padding bug rather than a template one. */
+.duel-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--bg-panel-flat);
+  font-size: 11.5px;
+}
+
+.duel-id {
+  color: var(--text-faint);
+}
+
+.duel-arena {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Parchment, not ember, and not gold either.
+ *
+ * This is the whole colour argument in one cell: a stake is an amount this card
+ * REPORTS, and ember on this screen means "the control that settles an amount
+ * now". A pool of ember numerals beside a row of buttons would read as a row of
+ * prices you are about to pay, which is exactly the wrong thing to say on the
+ * one card where every row is a listing somebody else posted.
+ */
+.duel-stake {
+  color: var(--text-display);
+}
+
+.duel-listed {
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+/* The timestamp is the first thing to go: at a narrow column the id, the arena,
+   the stake and the control are the row, and when it was listed is the one
+   field an operator is not deciding on. */
+@media (max-width: 1500px) {
+  /* Four, because `display: none` takes `.duel-listed` out of the grid
+     entirely — a hidden child does not hold its track. */
+  .duel-row {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+
+  .duel-listed {
+    display: none;
+  }
+}
+
+/* Framed at rest for the reason the arm row is: three words with an icon, in a
+   list of rows that are themselves framed, do not read as pressable. Gold on
+   hover, and never ember — this one arms a command, it does not settle it. */
+.duel-take {
+  border-color: var(--border-hairline);
+}
+
+.duel-take:hover:not(:disabled) {
+  border-color: var(--gold-400);
+}
+
+.duel-take:disabled {
+  border-color: transparent;
+  cursor: default;
 }
 
 /* ── Standing pane ────────────────────────────────────────────────────────── */
@@ -3508,6 +3866,146 @@ code {
   gap: var(--s4);
 }
 
+/* ── The dice (Amendment G) ─────────────────────────────────────────────────
+ *
+ * Under the board, on the fighters' own axis: challenger left, throne right,
+ * matching the portraits above. The centre track is empty and the same width as
+ * the medallion's column, so the two clusters hug the middle from either side
+ * rather than drifting to the page edges.
+ */
+.match-dice-row-outer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  min-height: 58px;
+}
+
+.match-dice-gap {
+  width: 64px;
+}
+
+.match-dice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Each cluster hugs the centre from its own side. */
+.match-dice[data-align="CHALLENGER"] {
+  align-items: flex-end;
+}
+
+.match-dice[data-align="THRONE"] {
+  align-items: flex-start;
+}
+
+.match-dice-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/*
+ * Both clusters read left to right: dice, then modifier.
+ *
+ * The challenger's row was reversed at first, on the theory that a mirrored
+ * board wants a mirrored cluster. It does not — it rendered "+90 16 20", which
+ * puts the judge bonus before the throw that earned it and reads as a sum
+ * running backwards. The arena's own stage does not mirror either. Only the
+ * ALIGNMENT is mirrored, so each cluster hugs the centre from its own side.
+ */
+
+.match-die {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-inset);
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.match-die[data-phase="tumbling"] {
+  animation: match-die-tumble 0.55s ease-out both;
+}
+
+.match-die[data-phase="landed"] {
+  animation: match-die-land 0.3s ease-out both;
+  color: var(--text-display);
+}
+
+/*
+ * The die that COUNTED, ringed in its side's colour — the same two identities
+ * the reels and the crests already use, so a reader never has to learn a third
+ * mapping. Steel is the challenger, gold the throne; ember is not spent here,
+ * because a die is not an amount.
+ */
+.match-die[data-kept="true"] {
+  border-color: var(--gold-400);
+  color: var(--text-display);
+}
+
+.match-die[data-kept="true"][data-role="CHALLENGER"] {
+  border-color: #a8c0d4;
+}
+
+/* The die that was thrown away under advantage or disadvantage. Dimmed rather
+   than hidden: the pair IS the record, and showing only the kept one would make
+   an advantage indistinguishable from a wash. */
+.match-die[data-dropped="true"] {
+  opacity: 0.45;
+  color: var(--text-faint);
+}
+
+/* A natural 20 or 1 on the kept die. The one place this cluster brightens, and
+   it is the record's own word rather than a judgement about the throw. */
+.match-die[data-natural="true"] {
+  box-shadow: 0 0 14px rgba(221, 106, 28, 0.35);
+}
+
+.match-die-mod {
+  font-size: 12px;
+}
+
+.match-dice-state {
+  min-height: 12px;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.match-dice-state[data-natural="true"] {
+  color: var(--ember-400);
+}
+
+@keyframes match-die-tumble {
+  from {
+    transform: translateY(-16px) rotate(-200deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes match-die-land {
+  from {
+    transform: scale(1.3);
+  }
+  to {
+    transform: none;
+  }
+}
+
 .match-portrait-frame {
   transition: transform var(--dur-base) var(--ease);
 }
@@ -3576,6 +4074,67 @@ code {
   line-height: 1.2;
   color: var(--gold-400);
   overflow-wrap: anywhere;
+}
+
+/*
+ * The three deep links on this card — fighter name, House, arena — and the
+ * whole rule is that they must look IDENTICAL until pointed at.
+ *
+ * A name band set in gold at 19px is the card's headline. Underlining it, or
+ * recolouring it, would turn a readout into a row of controls and would spend a
+ * second meaning on the arena's frame material. `a` also arrives with the
+ * browser's own blue, which `globals.css` already had to correct once for the
+ * explorer link in the masthead — `text-decoration: none` and an inherited
+ * colour are what stop that here.
+ *
+ * Hover is the whole affordance: brighter gold, and a hairline under the House
+ * and arena, which are small enough that a colour shift alone is easy to miss.
+ */
+a.match-name,
+a.match-house,
+.match-arena-link {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+a.match-name:hover {
+  color: var(--gold-200);
+}
+
+a.match-house:hover,
+.match-arena-link:hover {
+  color: var(--gold-300);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The House keeps its crest beside its name when it becomes a link — an anchor
+   is inline by default and the crest would sit on the text baseline. */
+a.match-house {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/*
+ * The portrait link adds NO frame of its own.
+ *
+ * `.match-portrait-frame` already draws the border and carries the won/lost
+ * crest state, so an anchor with any box of its own would double it. It is a
+ * transparent wrapper whose only job is to be clickable, and the lift on hover
+ * is what says so.
+ */
+.match-portrait-link {
+  display: block;
+  line-height: 0;
+  border-radius: inherit;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+
+.match-portrait-link:hover {
+  opacity: 0.86;
 }
 
 .match-dq {
@@ -3880,9 +4439,24 @@ code {
   list-style: none;
 }
 
+/*
+ * The arena's own column set, in the console's frame.
+ *
+ * NINE tracks for nine children: lane, id, challenger, "vs", throne, arena,
+ * tally, outcome, when. It was five, carrying "A vs B" as one cell — which is
+ * why a duel arrived here as two truncated wallets where the site shows a
+ * fight. The two sides are separate cells now so they can ellipsis
+ * independently; a shared cell truncates the second name first, every time.
+ *
+ * A grid with fewer tracks than children reflows rather than overflows, so
+ * getting this count wrong reads as a padding bug. It has already cost one
+ * round of that on `.duel-row`.
+ */
 .match-row {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1.1fr) minmax(0, 1.6fr) auto auto;
+  grid-template-columns:
+    76px minmax(0, 0.9fr) minmax(0, 1fr) auto minmax(0, 1fr)
+    minmax(0, 0.8fr) auto auto auto;
   align-items: center;
   gap: var(--s3);
   width: 100%;
@@ -3911,11 +4485,111 @@ code {
   color: var(--gold-400);
   font-size: 10px;
   letter-spacing: 0.08em;
+  text-align: right;
+}
+
+/* A void, or a row with no result to report. Gold is the material this row is
+   framed in, so a result that is NOT a result has to step out of it — otherwise
+   "no verdict published" reads exactly like a verdict. */
+.match-row-outcome[data-tone="muted"] {
+  color: var(--text-faint);
+}
+
+/* Parchment, never ember: `globals.css`'s first paragraph spends ember on the
+   one control that settles an amount, and a history row reports one. */
+.match-row-side {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-display);
+}
+
+/* The arena's own list crops portraits to the top: these are full-body renders,
+   and centring one frames a torso. 22px rather than the roster's 34 — this is a
+   dense table row, not a picker. */
+.match-row-face {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-hairline);
+  object-fit: cover;
+  object-position: top;
+  background: var(--bg-inset);
+}
+
+/* An empty frame, never a collapsed cell — the names either side stay on one
+   baseline down the whole list. */
+.match-row-face.empty {
+  display: block;
+}
+
+.match-row-vs {
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.match-row-arena,
+.match-row-tally {
+  font-size: 10.5px;
+}
+
+.match-row-tally {
+  color: var(--text-display);
+  text-align: right;
+}
+
+/* Teal for the lanes where nothing is at stake against the seat, ember-free
+   throughout — the lane chip is a taxonomy, not a signal. */
+.match-row-kind[data-kind="duel"],
+.match-row-kind[data-kind="undercard"] {
+  color: var(--teal-400);
+}
+
+/*
+ * A House Card is the third rung and takes neither colour: the throne moves the
+ * seat, the teal lanes moved somebody's money, and a summons moved NONE — its
+ * fee cannot be non-zero. The arena draws the same three-rung ladder on its own
+ * Type column and reaches the same neutral for the same reason.
+ */
+.match-row-kind[data-kind="summons"] {
+  color: var(--text-muted);
+}
+
+/*
+ * Below the console's narrow breakpoint the arena and the "vs" go first: the
+ * two names, the tally and the result are the row, and where it was fought is
+ * the one field an operator is not scanning for.
+ */
+@media (max-width: 1500px) {
+  .match-row {
+    grid-template-columns: 76px minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr) auto auto auto;
+  }
+
+  .match-row-vs,
+  .match-row-arena {
+    display: none;
+  }
 }
 
 .match-row-when,
+/*
+ * The lane chip, and it must not spill into the id beside it.
+ *
+ * A grid cell's default `min-width` is `auto`, so a word longer than its track
+ * OVERFLOWS rather than shrinking — "UNDERCARD" ran straight through the match
+ * id and the two rendered on top of each other. `min-width: 0` plus an ellipsis
+ * is the fix; the track is also widened, because a lane name that is always
+ * cut off is not a label.
+ */
 .match-row-kind {
   font-size: 10px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .match-pager {
@@ -4045,18 +4719,15 @@ code {
 }
 
 /*
- * A coin the playback has not reached: dimmed, never hidden. The record is
- * public the moment the verdict is — this is a replay relighting it, not a
- * reveal withholding it — so the row keeps its height and the table never
- * reflows as the run walks down it.
+ * There is no waiting-row state any more.
+ *
+ * A coin the playback had not reached used to render dimmed rather than hidden,
+ * so the table kept its full height and never reflowed. That traded a spoiler
+ * for a stable layout: a dimmed row is still a legible row, and the whole
+ * record sat there ahead of the stage playing it. Rows now ARRIVE with their
+ * coin (`match-evidence.tsx` slices to the landed count), so the table grows
+ * down as the run walks it — and a card at rest still renders the whole log.
  */
-.evi-row[data-waiting="true"] {
-  opacity: 0.3;
-}
-
-.evi-row {
-  transition: opacity 320ms ease;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .evi-bar > div,

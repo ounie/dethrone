@@ -140,8 +140,8 @@ export default function MatchEvidence({
    * The panel used to render only the finished record, which made "Run the
    * verdict" animate the board and leave the bars and the table sitting at
    * their end state — the fight played out above a scoreboard that already
-   * knew the answer. The bars now drain as each coin lands and each row lights
-   * when its coin does.
+   * knew the answer. The bars now drain as each coin lands and each row
+   * ARRIVES when its coin does.
    *
    * Omitted means the whole record, which is the state a card at rest is in and
    * the state the panel renders with no JavaScript at all: the record is public
@@ -183,6 +183,20 @@ export default function MatchEvidence({
   /* Clamped, so a frame from a longer or shorter timeline can never make the
      panel show more coins than the record has. */
   const landed = Math.max(0, Math.min(exchanges.length, revealed ?? exchanges.length));
+  /*
+    The rows the table actually holds: exactly the coins the playback has
+    landed.
+
+    They used to all render and DIM ahead of the stage, on the argument that the
+    record is public the moment the verdict is and a vanished row would be this
+    panel concealing evidence. Sound about the record, wrong about the replay —
+    a dimmed row is still a legible row, so the whole table sat there spoiling
+    coins the stage had not reached, on the one surface whose entire job is
+    playing them in order. Nothing is concealed by this: a card at rest passes
+    no `revealed` at all and holds the whole log, including with no JavaScript,
+    and the table is whole again the instant the run ends.
+  */
+  const rows = revealed === undefined ? exchanges : exchanges.slice(0, landed);
   const hpNow = bar ? hpAfter(bar, matchLoser, landed) : null;
 
   const toggleEx = (k: number) =>
@@ -233,7 +247,7 @@ export default function MatchEvidence({
             </tr>
           </thead>
           <tbody>
-            {exchanges.map((e, k) => {
+            {rows.map((e, k) => {
               const c = e.contest;
               const w = isRole(e.winnerRole) ? e.winnerRole : null;
               const clash = c ? c.tiePath !== "none" : false;
@@ -256,11 +270,6 @@ export default function MatchEvidence({
                 <Fragment key={k}>
                   <tr
                     className="evi-row"
-                    /* Coins the playback has not reached DIM — they are never
-                       hidden. The record is public the moment the verdict is,
-                       and a row that vanished would be this panel concealing
-                       evidence to stage a surprise. Dimming relights instead. */
-                    data-waiting={k >= landed ? "true" : undefined}
                     onClick={() => toggleEx(k)}
                     aria-expanded={openEx.has(k)}
                   >

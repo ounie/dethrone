@@ -5,6 +5,8 @@ import ChatPane from "./chat-pane";
 import ConsoleLayout from "./console-layout";
 import CommandPane from "./command-pane";
 import ConfirmDialog, { type ConfirmRequest } from "./confirm-dialog";
+import CardsPane from "./cards-pane";
+import DuelsPane from "./duels-pane";
 import FightersPane from "./fighters-pane";
 import MatchPane from "./match-pane";
 import Masthead, { type Ceiling, type House, type Wallet } from "./masthead";
@@ -47,9 +49,9 @@ const FIRST = COMMANDS[0];
  * the Fighters panel has one open. Everything else starts empty, because
  * everything else is either a game input or somebody else's id.
  *
- * Not applied to an exhibition's `fighterA` / `fighterB`: a promoter books two
- * fighters and neither is obviously "yours", so guessing one would fill a field
- * the operator has to check anyway.
+ * Not applied to a two-fighter field pair like `fighterA` / `fighterB`, where
+ * neither is obviously "yours": guessing one would fill a field the operator
+ * has to check anyway.
  */
 function seedArgs(cmd: Command, fighter: number | null): Record<string, string> {
   if (fighter === null) return {};
@@ -64,6 +66,7 @@ export default function Console({
   agent,
   forgeNote,
   stakeRange,
+  railMinCents,
   patronTiers,
   arenas,
   sequenceLength,
@@ -79,6 +82,12 @@ export default function Console({
   agent: AgentConfig;
   forgeNote: string | null;
   stakeRange: StakeRange;
+  /**
+   * The canon's minimum Rail position, in cents, or null where it published
+   * none. Handed to the House Cards card, which arms a caller-priced command
+   * and therefore has no 402 to read a price from.
+   */
+  railMinCents: number | null;
   patronTiers: readonly PatronTierOption[];
   /** Every arena the canon publishes, for the fields that name one. */
   arenas: readonly ArenaChoice[];
@@ -463,6 +472,10 @@ export default function Console({
             <MatchPane
               matchId={openMatchId}
               operator={operator}
+              /* The arena's own pages, for the fighter, House and arena links
+                 on that card. Both were already on this component's props. */
+              baseUrl={baseUrl}
+              arenas={arenas}
               drag={drag}
               disabled={busy}
             />
@@ -471,6 +484,48 @@ export default function Console({
           log: (drag) => <ResponseLog rows={log} drag={drag} />,
           seat: (drag) => <SeatState seat={seat} baseUrl={baseUrl} drag={drag} />,
           standing: (drag) => <StandingPane standing={standing} drag={drag} />,
+          /*
+            `loadCommand` again, and `openFighter` again — the same two things
+            the Fighters panel is handed, which is the point.
+
+            The pool supplies a duel id and the arena supplies nothing about who
+            posted it; the fighter that goes with it is this console's own, and
+            the one the operator has open is the best guess available without
+            rendering a second roster. It is a guess that costs nothing to be
+            wrong about: the command pane shows the field, and Run is still the
+            only control that settles an amount.
+          */
+          /*
+            House Cards, and the market on each.
+
+            It takes `loadCommand` for the same reason the pool does: the two
+            "Back this fighter" buttons arm `take_position` in the command pane
+            and nothing here settles an amount. `minPositionCents` is the
+            CANON's number — a position is caller-priced, so there is no quote
+            to read a minimum off, and a card that filled that field from a
+            constant of its own would be a second copy of arena money.
+          */
+          cards: (drag) => (
+            <CardsPane
+              capabilities={capabilities}
+              operator={operator}
+              disabled={busy}
+              minPositionCents={railMinCents}
+              baseUrl={baseUrl}
+              onArm={loadCommand}
+              drag={drag}
+            />
+          ),
+          duels: (drag) => (
+            <DuelsPane
+              capabilities={capabilities}
+              operator={operator}
+              disabled={busy}
+              selectedFighter={openFighter}
+              onArm={loadCommand}
+              drag={drag}
+            />
+          ),
         }}
       />
 

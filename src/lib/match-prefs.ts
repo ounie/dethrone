@@ -37,6 +37,17 @@
 const AUTOPLAY_KEY = "dethrone.console.match.autoplay.v1";
 const SOUND_KEY = "dethrone.console.match.sound.v1";
 
+/**
+ * Written once and read by all three of the sound accessors below, because a
+ * default that disagreed with itself between the SSR snapshot and the client
+ * one is a hydration mismatch rather than a preference.
+ *
+ * The key keeps its `.v1` suffix on purpose: this changes what an operator who
+ * has never chosen gets, and must NOT overwrite the choice of one who has. A
+ * stored "false" still wins.
+ */
+const SOUND_DEFAULT = true;
+
 const listeners = new Set<() => void>();
 
 function read(key: string, fallback: boolean): boolean {
@@ -65,10 +76,21 @@ function write(key: string, value: boolean): void {
  * that started animating on arrival would be the one exception. An operator who
  * wants it says so once; one who does not never has to notice the feature.
  *
- * Sound is off by default for a harder reason: a browser suspends an
- * `AudioContext` created outside a user gesture, so a console that defaulted to
- * sound-on would be silent anyway on the first load and would have lied in its
- * own toggle. Off is both the polite default and the honest one.
+ * ## Sound is ON by default, and the old objection has been answered
+ *
+ * It used to be off for a reason that had nothing to do with politeness: a
+ * browser suspends an `AudioContext` created outside a user gesture, so a
+ * console defaulting to sound-on would have been silent on the first load and
+ * would have lied in its own toggle. That was true of a toggle alone.
+ *
+ * `MatchSound.prime()` answers it. The pane spends the operator's first click
+ * anywhere in the console on building and resuming the context, silently, long
+ * before any verdict lands — so by the time a playback runs the permission is
+ * held and "on" means audible. A default that cannot make a sound is a lie; a
+ * default that can is just a default, and the fight this console watches is
+ * worth hearing without asking for it twice.
+ *
+ * Off is one click away and persists, which is the whole point of this file.
  */
 export function autoplayEnabled(): boolean {
   return read(AUTOPLAY_KEY, false);
@@ -86,12 +108,27 @@ export function autoplaySnapshot(): boolean {
 }
 
 export function soundSnapshot(): boolean {
-  return read(SOUND_KEY, false);
+  return read(SOUND_KEY, SOUND_DEFAULT);
 }
 
-/** The server has no browser, so it has neither preference. */
+/** The server has no browser, so auto-play is off there and everywhere else. */
 export function serverFalse(): boolean {
   return false;
+}
+
+/**
+ * The SSR snapshot for sound, which must be the client's default rather than
+ * `false`.
+ *
+ * `useSyncExternalStore` renders the server snapshot through hydration and only
+ * then adopts the client's. Returning false here would print "Sound off" on
+ * every first paint and flip it a frame later — a control that visibly changes
+ * its own mind before anyone touches it. Matching the default means only an
+ * operator who has actually turned sound OFF sees a correction, which is the
+ * one case where the correction is the truth.
+ */
+export function serverSound(): boolean {
+  return SOUND_DEFAULT;
 }
 
 export function writeAutoplay(value: boolean): void {

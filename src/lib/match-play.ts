@@ -48,6 +48,19 @@ export interface Frame {
   crests: Record<Side, "won" | "lost" | null>;
   reels: Record<Side, ReelState>;
   medallion: { kind: "idle" | "spinning" | "landed"; role: string | null };
+  /**
+   * The dice for the exchange being fought, or null between exchanges.
+   *
+   * `coin` is the exchange index, so the renderer looks up the STORED contest
+   * record rather than being handed numbers this file invented — the reveal's
+   * one law, and the reason this carries an index instead of faces. Nothing
+   * here rolls anything: the dice were rolled by the arena from a seed it has
+   * since published, and a playback that generated its own would be a second
+   * verdict wearing the first one's clothes.
+   *
+   * `tumbling` is theatre; `landed` is the artifact.
+   */
+  dice: { coin: number; phase: "tumbling" | "landed" } | null;
   /** One entry per exchange: null, "active", or the side that took it. */
   pips: (string | null)[];
   score: Record<Side, number>;
@@ -87,6 +100,7 @@ export function initialFrame(exchanges: readonly Exchange[]): Frame {
     crests: { CHALLENGER: null, THRONE: null },
     reels: { CHALLENGER: reel(), THRONE: reel() },
     medallion: { kind: "idle", role: null },
+    dice: null,
     pips: exchanges.map(() => null),
     score: { CHALLENGER: 0, THRONE: 0 },
     banner: false,
@@ -151,6 +165,9 @@ export function buildTimeline(
         impact: 0,
         crests: { CHALLENGER: null, THRONE: null },
         medallion: { kind: "idle", role: null },
+        // Cleared with the crests: the previous exchange's throw must not be on
+        // screen while this one's actions are still spinning up.
+        dice: null,
         reels: {
           // The two reels run for different durations so they land one after the
           // other — the challenger first, which is what makes the throne's stop
@@ -203,6 +220,25 @@ export function buildTimeline(
     if (matchPoint) {
       steps.push({ hold: 0, apply: (f) => f, cue: { sound: "action", type: e.throne?.type ?? "" } });
     }
+
+    /*
+      The throw, between the actions and the coin.
+
+      Order is the argument, not the choreography: both actions are on the
+      table, THEN the dice decide, THEN the coin says who took it. Landing the
+      dice after the medallion would show a result before the thing that
+      produced it, and a reader would reasonably conclude the coin was the
+      decision and the dice were decoration. Under Amendment G it is the other
+      way round.
+    */
+    steps.push({
+      hold: 620,
+      apply: (f) => ({ ...f, dice: { coin: i, phase: "tumbling" } }),
+    });
+    steps.push({
+      hold: 460,
+      apply: (f) => ({ ...f, dice: { coin: i, phase: "landed" } }),
+    });
 
     const spinMs = matchPoint || stakes ? 1300 : 850;
     steps.push({

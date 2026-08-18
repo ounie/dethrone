@@ -10,6 +10,7 @@ import {
   readMatch,
   secondsUntil,
   type MatchAction,
+  type ExchangeContest,
   type MatchSide,
   type MatchView,
 } from "@/lib/match-view";
@@ -25,10 +26,12 @@ import {
   type MatchFilter,
   type MatchRow,
 } from "@/lib/match-list";
+import type { ArenaChoice } from "@/lib/capability";
 import {
   autoplayEnabled,
   autoplaySnapshot,
   serverFalse,
+  serverSound,
   soundSnapshot,
   subscribeMatchPrefs,
   writeAutoplay,
@@ -145,19 +148,135 @@ function Portrait({
   side,
   align,
   crest,
+  baseUrl,
 }: {
   side: MatchSide;
   align: Side;
   crest: "won" | "lost" | null;
+  baseUrl: string;
 }) {
+  const face = side.imageUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className="match-portrait" src={side.imageUrl} alt={side.name ?? "Fighter"} />
+  ) : (
+    <div className="match-portrait match-portrait-empty" aria-hidden="true" />
+  );
+
   return (
     <div className="match-portrait-frame" data-align={align} data-crest={crest ?? undefined}>
-      {side.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img className="match-portrait" src={side.imageUrl} alt={side.name ?? "Fighter"} />
+      {/*
+        The portrait opens the fighter, when there is a fighter to open.
+
+        Gated on `characterId` rather than rendered always: the arena answers
+        `/character/{id}` for any id, so a link built without one would be a
+        control that looks live and lands somewhere arbitrary. A match still
+        being drawn has no ids yet, and an unlinked portrait is the honest
+        rendering of that.
+
+        New tab, `noreferrer noopener` — every outbound on this console does,
+        and none of them may hand the opener a handle back into a runtime that
+        holds a key.
+      */}
+      {side.characterId === null ? (
+        face
       ) : (
-        <div className="match-portrait match-portrait-empty" aria-hidden="true" />
+        <a
+          className="match-portrait-link"
+          href={`${baseUrl}/character/${side.characterId}`}
+          target="_blank"
+          rel="noreferrer noopener"
+          title={`Open ${side.name ?? "this fighter"} on the arena`}
+        >
+          {face}
+        </a>
       )}
+    </div>
+  );
+}
+
+/**
+ * A slug, as the arena's own display name.
+ *
+ * The list is `GET /api/arenas`, read on the server and handed down. Falls back
+ * to the slug when the arena did not publish one, which keeps an unrecognised
+ * ground visible rather than blank.
+ */
+function arenaName(arenas: readonly ArenaChoice[], slug: string): string {
+  return arenas.find((a) => a.slug === slug)?.displayName ?? slug;
+}
+
+/* ── The dice (Amendment G) ─────────────────────────────────────────────────
+   A STORED record, rendered. Nothing here rolls anything: the arena rolled
+   these from a per-match seed it publishes with the verdict, so every face
+   below is replayable by anyone holding the seed. The tumble is theatre; the
+   faces, the modifier and the advantage state are the artifact. */
+
+/**
+ * One side's throw: its raw dice — two under advantage or disadvantage, one on
+ * a wash — with the kept die ringed in the side's colour, the judge-derived
+ * modifier beside it, and the advantage state named underneath.
+ *
+ * `keptIdx` is found by VALUE rather than assumed to be an end of the array,
+ * because "take high" and "take low" put it at opposite ends and a record with
+ * two equal faces has no distinguishable pair at all. Indexing off the
+ * advantage state would be this console re-deciding which die counted; the
+ * record already says, in `roll`.
+ */
+function DiceCluster({
+  contest,
+  role,
+  phase,
+}: {
+  contest: ExchangeContest;
+  role: Side;
+  phase: "tumbling" | "landed";
+}) {
+  const dice = contest.dice[role] ?? [];
+  const keptIdx = dice.indexOf(contest.roll[role]);
+  const adv = contest.advantage[role];
+  const natural = contest.flourish[role] ? "NAT 20" : contest.stumble[role] ? "NAT 1" : null;
+
+  return (
+    <div className="match-dice" data-align={role}>
+      <div className="match-dice-row">
+        {dice.map((v, i) => (
+          <span
+            key={i}
+            className="num match-die"
+            data-phase={phase}
+            data-kept={phase === "landed" && i === keptIdx ? "true" : undefined}
+            data-dropped={phase === "landed" && dice.length > 1 && i !== keptIdx ? "true" : undefined}
+            data-natural={phase === "landed" && i === keptIdx && natural ? "true" : undefined}
+            data-role={role}
+            style={phase === "tumbling" ? { animationDelay: `${i * 90}ms` } : undefined}
+          >
+            {phase === "tumbling" ? "·" : v}
+          </span>
+        ))}
+        {phase === "landed" && (
+          /*
+            The modifier, printed as the log writes it: `+mod` then `+variety`
+            where a first use earned one. Two signs rather than one summed
+            number, because the second is a rule an operator can look up and a
+            total would hide which coins earned it.
+          */
+          <span className="num match-die-mod muted">
+            +{contest.mod[role]}
+            {contest.variety[role] > 0 ? `+${contest.variety[role]}` : ""}
+          </span>
+        )}
+      </div>
+      {/* Reserves its line even when empty, so the board does not jump between
+          a wash and an advantage. */}
+      <div className="match-dice-state" data-natural={phase === "landed" && natural ? "true" : undefined}>
+        {phase === "landed" && natural
+          ? natural
+          : adv === "advantage"
+            ? "advantage"
+            : adv === "disadvantage"
+              ? "disadvantage"
+              : "\u00a0"}
+      </div>
     </div>
   );
 }
@@ -178,10 +297,12 @@ function Names({
   challenger,
   throne,
   houses,
+  baseUrl,
 }: {
   challenger: MatchSide;
   throne: MatchSide;
   houses: Map<string, House>;
+  baseUrl: string;
 }) {
   return (
     <div className="match-names">
@@ -190,9 +311,40 @@ function Names({
         const crest = crestFor(side.houseSlug);
         return (
         <div className="match-name-block" key={i} data-align={i === 0 ? "CHALLENGER" : "THRONE"}>
-          <span className="match-name display">{side.name ?? "—"}</span>
+          {/* The name opens the fighter, like the portrait above it. Unlinked
+              when there is no id — a link built without one lands somewhere
+              arbitrary, because the arena answers `/character/{id}` for any. */}
+          {side.characterId === null ? (
+            <span className="match-name display">{side.name ?? "—"}</span>
+          ) : (
+            <a
+              className="match-name display"
+              href={`${baseUrl}/character/${side.characterId}`}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={`Open ${side.name ?? "this fighter"} on the arena`}
+            >
+              {side.name ?? "—"}
+            </a>
+          )}
           {side.houseSlug && (
-            <span className="match-house" title={house?.words ?? undefined}>
+            /*
+              The House opens its page, and the destination is `/arena/{slug}`
+              rather than `/house/{slug}`.
+
+              They are one page on the arena — `/house/{slug}` is a permanent
+              redirect — and linking the canonical URL saves the reader a hop.
+              It also states the relationship the arena actually holds: a House
+              and its ground are one thing there, which is why the redirect
+              exists rather than two pages that could drift.
+            */
+            <a
+              className="match-house"
+              href={`${baseUrl}/arena/${side.houseSlug}`}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={house?.words ?? `Open ${house?.name ?? side.houseSlug} on the arena`}
+            >
               {crest && (
                 // A plain <img>: these crests carry a real alpha channel and
                 // Next's optimizer flattens it. Decorative, because the House is
@@ -201,7 +353,7 @@ function Names({
                 <img className="match-crest" src={crest} alt="" aria-hidden="true" width={16} height={16} />
               )}
               <span className="muted">{house?.name ?? side.houseSlug}</span>
-            </span>
+            </a>
           )}
           {side.dq && (
             <span className="match-dq" data-tone="warn">
@@ -268,15 +420,96 @@ function Reel({
   );
 }
 
+/**
+ * A fighter's portrait on a history row.
+ *
+ * A plain `<img>`, for `fighters-pane.tsx`'s reason and it is the important one:
+ * `next/image` on a remote host routes the bytes through THIS server's
+ * optimiser, which would make the console process — the one runtime holding a
+ * key — fetch the arena's storage on every history render. A bare tag is the
+ * browser fetching a world-readable, content-addressed, immutable object, and
+ * this process never touches it.
+ *
+ * The URL is the arena's own, published beside the key. Composing one from a
+ * storage key would put a fact about where those objects live inside a client.
+ *
+ * A missing portrait renders an empty frame rather than collapsing the cell:
+ * the names either side must stay on one baseline down the whole list, and a
+ * row that reflows because one fighter has no render reads as a broken row.
+ */
+function RowFace({ url }: { url: string | null }) {
+  if (!url) return <span className="match-row-face empty" aria-hidden="true" />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img className="match-row-face" src={url} alt="" loading="lazy" />;
+}
+
+/**
+ * What a row's result is CALLED, and it is read rather than defaulted.
+ *
+ * The arena had this exact bug and it is worth not repeating one directory
+ * over: `/matches` rendered `Defended` as the final `else`, so a lane that
+ * writes no throne outcome — a duel writes none, because "defended" says
+ * nothing about a match with no seat — inherited the throne's label. The first
+ * real duel ever fought published as "Defended" beside a Type column reading
+ * "Duel".
+ *
+ * So every throne outcome is matched by name, and anything else is reported by
+ * its WINNER, which is the only thing that actually happened. On a duel the
+ * arena's stored `CHALLENGER` slot is the HOST — the agent that posted the
+ * listing — so that is what it is called here. `lib/game/sides.ts` in the arena
+ * carries the argument for the vocabulary; this is the console's copy of the
+ * two words, deliberately not a second general translation layer.
+ */
+function outcomeLabel(r: MatchRow): string {
+  if (r.outcome === "DEFENDED") return "DEFENDED";
+  if (r.outcome === "SEAT_TAKEN") return "SEAT TAKEN";
+  if (r.outcome === "VOIDED") return "VOIDED";
+  if (r.winner === "CHALLENGER") return r.kind === "duel" ? "HOST WON" : "FIGHTER A WON";
+  if (r.winner === "THRONE") return r.kind === "duel" ? "OPPONENT WON" : "FIGHTER B WON";
+  return "—";
+}
+
+/**
+ * The colour, and it spends no ember.
+ *
+ * `globals.css`'s first paragraph reserves ember fill for the one control that
+ * settles an amount now, and a history row settles nothing — it reports. A
+ * void is the only row that gets a distinct tone, because "no result" is the
+ * one state a reader must not mistake for a result.
+ */
+function outcomeTone(r: MatchRow): "muted" | undefined {
+  return r.outcome === "VOIDED" || outcomeLabel(r) === "—" ? "muted" : undefined;
+}
+
 export default function MatchPane({
   matchId,
   operator,
+  baseUrl,
+  arenas,
   drag,
   disabled,
 }: {
   matchId: string | null;
   /** The address currently signing, for the `Mine` filter. Null read-only. */
   operator: string | null;
+  /**
+   * The arena this console points at, for the deep links on this card.
+   *
+   * A fighter, a House and an arena all have a page over there, and this card
+   * already prints all three. Linking them is the difference between a readout
+   * and a way in — and the destination is the arena's, never composed from
+   * anything this console holds beyond the base URL it was configured with.
+   */
+  baseUrl: string;
+  /**
+   * The arenas the canon published, for slug → display name.
+   *
+   * Read on the server and handed down, the same list the command pane's arena
+   * fields use. This console holds no table of eight: `the-canopy` is an
+   * identifier and "The Canopy" is what the arena calls it, and only the arena
+   * gets to say which is which.
+   */
+  arenas: readonly ArenaChoice[];
   drag?: PanelDrag;
   disabled?: boolean;
 }) {
@@ -305,12 +538,37 @@ export default function MatchPane({
   const [followStopped, setFollowStopped] = useState(false);
 
   const autoplay = useSyncExternalStore(subscribeMatchPrefs, autoplaySnapshot, serverFalse);
-  const sound = useSyncExternalStore(subscribeMatchPrefs, soundSnapshot, serverFalse);
+  const sound = useSyncExternalStore(subscribeMatchPrefs, soundSnapshot, serverSound);
 
   /** Built on the first playback and reused. A context made off-gesture is suspended. */
   const soundRef = useRef<MatchSound | null>(null);
   /** Bumped per run, so a superseded playback can tell and abandon itself. */
   const runId = useRef(0);
+
+  /*
+    Claim the audio permission on the operator's first click, anywhere.
+
+    Sound defaults to on now (`match-prefs.ts` carries the argument), and a
+    default that cannot make a sound would be a lie: a browser suspends any
+    `AudioContext` built outside a user gesture, and the one playback that
+    matters most — a verdict landing while the pane follows a live match —
+    starts on a timer that no gesture precedes. So the first pointer or key
+    event in the console is spent building and resuming the context. It plays
+    nothing; priming is permission, not sound. An operator who clicks nothing at
+    all still gets a silent live playback, which is the browser's call.
+  */
+  useEffect(() => {
+    const prime = () => {
+      (soundRef.current ??= createMatchSound()).prime();
+    };
+    const opts = { once: true, capture: true } as const;
+    window.addEventListener("pointerdown", prime, opts);
+    window.addEventListener("keydown", prime, opts);
+    return () => {
+      window.removeEventListener("pointerdown", prime, { capture: true });
+      window.removeEventListener("keydown", prime, { capture: true });
+    };
+  }, []);
 
   const loadMenus = useCallback(async (view: MatchView) => {
     const sides: [Side, number | null][] = [
@@ -474,16 +732,24 @@ export default function MatchPane({
     setHistoryError(null);
     setLoadedHistory(true);
     try {
-      // Two sources, because throne matches and duels are two routes. `mine` is
-      // a predicate over whichever rows are loaded, not a third endpoint.
-      const [throne, duels] = await Promise.all([
-        which !== "duel" ? act("matches", {}) : Promise.resolve(null),
-        which !== "throne" ? act("pool", {}) : Promise.resolve(null),
-      ]);
-      const next: MatchRow[] = [];
-      if (throne) next.push(...readMatchRows(bodyOf(throne) ?? null, "throne"));
-      if (duels) next.push(...readMatchRows(bodyOf(duels) ?? null, "duel"));
-      if (next.length === 0 && throne) setHistoryError(codeOf(throne, "NO_MATCHES"));
+      /*
+        ONE read, every lane.
+
+        This used to issue two: `matches` for the throne and `pool` for duels.
+        The pool is the list of OPEN duel listings — a duel leaves it the instant
+        it is taken — so the Duel tab was reading a source that structurally
+        cannot contain a settled duel, and showed "Nothing to show for this
+        filter" for the whole life of the mode.
+
+        `/api/matches` now takes a lane. `all` is asked for even when a narrower
+        tab is showing, because the tabs are a filter over rows already loaded
+        (`filterRows`) and switching tabs should not cost a round trip — and
+        because `mine` spans lanes, so a per-tab fetch would make it mean
+        "mine, among throne matches" without saying so.
+      */
+      const data = await act("matches", { mode: "all" });
+      const next = readMatchRows(bodyOf(data) ?? null);
+      if (next.length === 0) setHistoryError(codeOf(data, "NO_MATCHES"));
       setRows(next);
     } catch {
       setHistoryError("CONSOLE_TRANSPORT");
@@ -511,7 +777,7 @@ export default function MatchPane({
     lastOpened.current = "";
     void (async () => {
       const data = await act("matches", {});
-      const first = readMatchRows(bodyOf(data) ?? null, "throne")[0];
+      const first = readMatchRows(bodyOf(data) ?? null)[0];
       if (first) void load(first.id);
     })();
   }, [matchId, load]);
@@ -737,7 +1003,29 @@ export default function MatchPane({
             <div className="match" data-entered={view.entered ? "true" : undefined}>
               <div className="match-meta">
                 {match.mode && <span className="eyebrow">{match.mode}</span>}
-                {match.arena && <span className="muted">{match.arena}</span>}
+                {/*
+                  The arena's NAME, never the slug it arrives as. "the-canopy"
+                  is an identifier; "The Canopy" is what the arena calls it
+                  everywhere a person reads it, and the House beside it already
+                  sets that precedent two lines down.
+
+                  Resolved off the published list rather than from a table here:
+                  this console holds no copy of the eight, and a slug it does
+                  not recognise falls back to itself — an unknown arena is still
+                  a fact about the match, and hiding it is worse than printing
+                  an identifier.
+                */}
+                {match.arena && (
+                  <a
+                    className="muted match-arena-link"
+                    href={`${baseUrl}/arena/${match.arena}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    title={`Open ${arenaName(arenas, match.arena)} on the arena`}
+                  >
+                    {arenaName(arenas, match.arena)}
+                  </a>
+                )}
                 {match.verdict?.rubricVersion && (
                   <span className="num muted">{match.verdict.rubricVersion}</span>
                 )}
@@ -796,6 +1084,7 @@ export default function MatchPane({
                   side={match.challenger}
                   align="CHALLENGER"
                   crest={view.crests.CHALLENGER}
+                  baseUrl={baseUrl}
                 />
                 <Reel
                   menu={live ? menus.CHALLENGER : []}
@@ -831,10 +1120,52 @@ export default function MatchPane({
                   }
                   fallback={shown?.throne ?? null}
                 />
-                <Portrait side={match.throne} align="THRONE" crest={view.crests.THRONE} />
+                <Portrait
+                  side={match.throne}
+                  align="THRONE"
+                  crest={view.crests.THRONE}
+                  baseUrl={baseUrl}
+                />
               </div>
 
-              <Names challenger={match.challenger} throne={match.throne} houses={houses} />
+              {/*
+                The throw for the exchange on the board.
+
+                Under the board rather than inside it: the board row is five
+                columns and a die cluster in a 96px portrait column would have
+                to shrink to nothing. This is the arena's own placement, and
+                the two clusters sit on the same axis as the fighters they
+                belong to — challenger left, throne right, matching the
+                portraits above.
+
+                Rendered from the STORED record via the exchange index the
+                frame carries. A coin with no contest record — a stored v3
+                verdict, judged before Amendment G — renders nothing rather
+                than a zeroed throw, which is the same refusal the record table
+                makes one card down.
+              */}
+              {view.dice && exchanges[view.dice.coin]?.contest && (
+                <div className="match-dice-row-outer">
+                  <DiceCluster
+                    contest={exchanges[view.dice.coin]!.contest!}
+                    role="CHALLENGER"
+                    phase={view.dice.phase}
+                  />
+                  <div className="match-dice-gap" aria-hidden="true" />
+                  <DiceCluster
+                    contest={exchanges[view.dice.coin]!.contest!}
+                    role="THRONE"
+                    phase={view.dice.phase}
+                  />
+                </div>
+              )}
+
+              <Names
+                challenger={match.challenger}
+                throne={match.throne}
+                houses={houses}
+                baseUrl={baseUrl}
+              />
 
               {exchanges.length === 0 && (
                 <p className="pane-body empty small">
@@ -1039,12 +1370,52 @@ export default function MatchPane({
                       void load(r.id);
                     }}
                   >
-                    <span className="eyebrow match-row-kind">{r.kind}</span>
-                    <span className="num match-row-id ellipsis">{r.id}</span>
-                    <span className="match-row-parties ellipsis muted">
-                      {r.challengerName ?? "—"} vs {r.championName ?? "—"}
+                    <span className="eyebrow match-row-kind" data-kind={r.kind}>
+                      {r.kind}
                     </span>
-                    {r.outcome && <span className="num match-row-outcome">{r.outcome}</span>}
+                    <span className="num match-row-id ellipsis">{r.id}</span>
+                    {/*
+                      The FIGHTERS, falling back to the owning agent and then to
+                      an em dash — the order the arena's own `history.ts`
+                      prescribes. A name sits beside a portrait, so reading the
+                      owner's name there is correct only while an agent owns
+                      exactly one fighter.
+
+                      Side ORDER follows the arena's table: challenger first,
+                      then the throne. On a duel those slots are the host and
+                      the opponent, which is what `sideLabels` names them.
+                    */}
+                    <span className="match-row-side">
+                      <RowFace url={r.challengerImageUrl} />
+                      <span className="ellipsis">
+                        {r.challengerFighterName ?? r.challengerName ?? "—"}
+                      </span>
+                    </span>
+                    <span className="match-row-vs muted">vs</span>
+                    <span className="match-row-side">
+                      <RowFace url={r.championImageUrl} />
+                      <span className="ellipsis">
+                        {r.championFighterName ?? r.championName ?? "—"}
+                      </span>
+                    </span>
+                    <span className="match-row-arena ellipsis muted">{r.arenaName ?? "—"}</span>
+                    {/*
+                      Winner's coins first, which is how the arena prints it —
+                      "5–0" reads as the winner's score and would be backwards
+                      half the time otherwise. Null tally is an em dash, never a
+                      zero: no verdict published is not the same as nobody
+                      scoring.
+                    */}
+                    <span className="num match-row-tally">
+                      {r.tally
+                        ? r.winner === "CHALLENGER"
+                          ? `${r.tally.challenger}–${r.tally.throne}`
+                          : `${r.tally.throne}–${r.tally.challenger}`
+                        : "—"}
+                    </span>
+                    <span className="num match-row-outcome" data-tone={outcomeTone(r)}>
+                      {outcomeLabel(r)}
+                    </span>
                     {r.endedAt && (
                       <span className="num muted match-row-when">
                         <Time iso={r.endedAt} />
@@ -1090,7 +1461,8 @@ export default function MatchPane({
           */}
           <p className="field-hint">
             These pages are over the rows the arena returned; its list route takes no cursor, so
-            there is no further page to request. Throne matches and duels are two different reads.
+            there is no further page to request. Every lane arrives from one read now — the tabs
+            filter rows already in hand, so switching between them costs nothing.
           </p>
         </div>
       )}

@@ -17,7 +17,7 @@ import { NoWalletError } from "./sign";
  * the only place two hard requirements can be met:
  *
  * **1. The offer gate.** A caller-priced command — take a duel, buy an heir,
- * book an exhibition — has a price the console cannot know until the 402
+ * pledge to the Founding Purse — has a price the console cannot know until the 402
  * arrives. Reading the offer here and *removing it* when it exceeds the
  * operator's maximum makes the payment library give up **without signing**. The
  * console has then refused a price rather than paid it and complained

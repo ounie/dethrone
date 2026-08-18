@@ -1,8 +1,8 @@
 {
   "$comment": "GENERATED — do not edit by hand. Regenerate with `pnpm canon:sync <path-to-apps/web>`. This records the arena's route tree at the commit below; it is a checked-in snapshot, not a source of truth. test/live/canon.live.test.ts is what catches a route deleted after this was taken.",
   "source": "apps/web/src/app/api/**/route.ts",
-  "commit": "32998cd4b7cb0329e780231a817a6b4986a24a0e",
-  "routeCount": 60,
+  "commit": "902753d0a032d1bae9a478c0fc497dcd8450f886",
+  "routeCount": 65,
   "routes": [
     {
       "path": "/api/agent/[id]",
@@ -39,6 +39,28 @@
     },
     {
       "path": "/api/asset/[...key]",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/cards",
+      "methods": [
+        "GET"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/cards/[id]",
       "methods": [
         "GET"
       ],
@@ -278,17 +300,6 @@
       "flag": "DUELS_ENABLED",
       "signScope": null,
       "paid": false,
-      "adminOnly": false,
-      "cronOnly": false
-    },
-    {
-      "path": "/api/exhibition",
-      "methods": [
-        "POST"
-      ],
-      "flag": "UNDERCARD_ENABLED",
-      "signScope": null,
-      "paid": true,
       "adminOnly": false,
       "cronOnly": false
     },
@@ -609,6 +620,50 @@
         "GET"
       ],
       "flag": null,
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/rail",
+      "methods": [
+        "GET"
+      ],
+      "flag": "RAIL_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/rail/[id]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "RAIL_ENABLED",
+      "signScope": null,
+      "paid": false,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/rail/[id]/position",
+      "methods": [
+        "POST"
+      ],
+      "flag": null,
+      "signScope": null,
+      "paid": true,
+      "adminOnly": false,
+      "cronOnly": false
+    },
+    {
+      "path": "/api/rail/[id]/positions/[wallet]",
+      "methods": [
+        "GET"
+      ],
+      "flag": "RAIL_ENABLED",
       "signScope": null,
       "paid": false,
       "adminOnly": false,

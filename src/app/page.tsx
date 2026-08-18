@@ -471,6 +471,10 @@ export default async function Page() {
         agent={agent}
         forgeNote={live.forgeNote}
         stakeRange={live.duel}
+        /* The canon's minimum position. A Rail position is caller-priced — the
+           amount paid IS the stake — so there is no 402 to read a floor off,
+           and the House Cards card would otherwise pick a number itself. */
+        railMinCents={live.rail.minPositionCents}
         patronTiers={live.patronage}
         arenas={arenas}
         sequenceLength={live.actions.sequenceLength}

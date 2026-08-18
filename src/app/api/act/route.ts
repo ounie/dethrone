@@ -284,7 +284,24 @@ export async function POST(req: Request): Promise<NextResponse> {
       const source = cmd.amountField ?? "maxCents";
       const raw = (args[source] ?? "").trim();
       const n = Number(raw);
-      if (!raw || !Number.isFinite(n) || n <= 0) {
+      /*
+        Empty and malformed are different refusals, and they used to share one.
+
+        Both are 400 and both stop before anything is signed, so the SAFETY was
+        never in question — the sentence was. An operator who left the maximum
+        blank was told "A numeric field was not a number", which describes a
+        typo they did not make and says nothing about the thing they did: leave
+        a required field empty. Reported from the duel pool, where "Take this"
+        fills the id and the fighter and the operator has no reason to expect a
+        third field at all.
+
+        `CONSOLE_MISSING_FIELD` already carries the right words — "A required
+        field was empty. No request was made." — and the loop above already
+        uses it for every field that is not this one. This is the caller-priced
+        amount catching up with the rest of the route.
+      */
+      if (!raw) return fail("CONSOLE_MISSING_FIELD", { field: source });
+      if (!Number.isFinite(n) || n <= 0) {
         return fail("CONSOLE_BAD_FIELD", { field: source, value: raw });
       }
       cost = Math.ceil(n);

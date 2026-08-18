@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import Icon from "./icon";
 import WalletPicker from "./wallet-picker";
 import { money, pct } from "@/lib/format";
@@ -53,6 +54,59 @@ function CopyButton({ value, what }: { value: string; what: string }) {
       }}
     >
       <Icon name={copied ? "shield-check" : "copy"} size={13} />
+    </button>
+  );
+}
+
+/**
+ * Re-read the balance from the chain.
+ *
+ * ## Why this needs a button at all
+ *
+ * The balance is a server render — `page.tsx` calls `usdcBalance(me)` once, on
+ * the way to producing this tree — and a settled paid command does not re-run
+ * that. So an operator who has just paid to challenge sits looking at what the
+ * wallet held BEFORE they paid, and the only way out was a browser reload,
+ * which throws away the response pane, the session log and the chat transcript
+ * to fix a number in the corner.
+ *
+ * ## `router.refresh()`, not a balance route
+ *
+ * A `GET /api/balance` would be the narrower request — one `view` call instead
+ * of a whole server render — and it is the wrong trade twice over. It is a
+ * SECOND door into the same fact, which is the thing `one-fetch` exists to
+ * stop; and it would leave the House, the capabilities and the seat readout
+ * pinned to an older render than the balance sitting beside them, which is the
+ * split-truth failure the ceiling meter's own comment argues against.
+ *
+ * `router.refresh()` re-runs the server tree and KEEPS client state, so the
+ * panes survive. That is the same mechanism the wallet picker uses after a
+ * switch, and for the same reason: nothing on this card is ever computed here.
+ *
+ * ## The pending state is a character, not a spinner
+ *
+ * `useTransition` ends when the server render actually lands rather than when
+ * a promise resolved, so the disabled state is honest about the RPC read it is
+ * waiting on. And it says so with an ellipsis, because every animation on this
+ * screen is switched off under `prefers-reduced-motion` — a spinning icon
+ * disappears for exactly the people most likely to need to know something is
+ * happening.
+ */
+function BalanceRefresh() {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <button
+      type="button"
+      className="icon-btn wallet-refresh"
+      disabled={pending}
+      aria-label={pending ? "Re-reading the balance" : "Re-read the balance from the chain"}
+      title="Re-read the balance from the chain"
+      onClick={() => startTransition(() => router.refresh())}
+    >
+      <Icon name="rotate-cw" size={13} />
+      {pending && <span aria-hidden="true">…</span>}
     </button>
   );
 }
@@ -143,6 +197,11 @@ function WalletCard({ wallet, house }: { wallet: Wallet; house: House | null }) 
         </a>
       </div>
 
+      {/*
+        The button sits OUTSIDE the ternary on purpose. An unreachable RPC is
+        the case that most wants a retry, and hiding the control there would
+        leave a dead-end sentence whose only remedy is a browser reload.
+      */}
       <p className="wallet-balance">
         {wallet.usdc === null ? (
           <span className="muted">Balance unavailable — the RPC could not be reached.</span>
@@ -152,6 +211,7 @@ function WalletCard({ wallet, house }: { wallet: Wallet; house: House | null }) 
             <span className="wallet-unit">USDC on {wallet.network}</span>
           </>
         )}
+        <BalanceRefresh />
       </p>
     </div>
   );
