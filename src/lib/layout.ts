@@ -41,6 +41,8 @@ export type PaneId =
   | "log"
   | "seat"
   | "standing"
+  | "duels"
+  | "cards"
   | "match";
 
 /**
@@ -66,6 +68,8 @@ export const PANE_TITLES: Record<PaneId, string> = {
   log: "Response log",
   seat: "Seat",
   standing: "Your standing",
+  duels: "Duel pool",
+  cards: "House Cards",
   match: "Match",
 };
 
@@ -89,7 +93,15 @@ export const DEFAULT_ARRANGEMENT: Arrangement = {
   // is two fighters facing each other across five exchanges.
   wide: ["fighters", "match"],
   left: ["chat", "command", "log"],
-  right: ["response", "seat", "standing"],
+  // The pool sits under the standing, at the foot of the see-things column. It
+  // is a read like the three above it, and it belongs beside "your duels" on
+  // the standing card rather than in the column where things are caused — its
+  // "Take this" arms the command pane in the OTHER column, which is the same
+  // direction the Fighters panel's arm row already points.
+  // House Cards sit under the pool for the same reason the pool sits under the
+  // standing: both are reads of what the arena is offering, and both arm a
+  // command in the OTHER column rather than acting here.
+  right: ["response", "seat", "standing", "duels", "cards"],
 };
 
 const KEY = "dethrone.console.layout.v1";

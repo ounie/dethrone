@@ -37,6 +37,61 @@ function run(): { frames: Frame[]; cues: string[] } {
   return { frames, cues };
 }
 
+/** Frame indices where the medallion TRANSITIONS to landed — one per coin. */
+function coinLandings(frames: Frame[]): number[] {
+  const out: number[] = [];
+  frames.forEach((f, i) => {
+    if (f.medallion.kind === "landed" && frames[i - 1]?.medallion.kind !== "landed") out.push(i);
+  });
+  return out;
+}
+
+describe("the dice decide before the coin does", () => {
+  /*
+    Amendment G's order, expressed as data: both actions on the table, THEN the
+    throw, THEN the coin. Landing the medallion before the dice would show a
+    result ahead of the thing that produced it, and a reader would reasonably
+    conclude the coin was the decision and the dice were decoration — which is
+    exactly backwards under the contested-coin rules.
+  */
+  it("lands every throw before the medallion that reports it", () => {
+    const { frames } = run();
+    for (let coin = 0; coin < exchanges.length; coin++) {
+      const landedThrow = frames.findIndex(
+        (f) => f.dice?.coin === coin && f.dice.phase === "landed",
+      );
+      const landedCoin = coinLandings(frames)[coin];
+      expect(landedThrow, `coin ${coin} never landed a throw`).toBeGreaterThan(-1);
+      expect(landedCoin, `coin ${coin} never landed`).toBeGreaterThan(-1);
+      expect(landedThrow, `coin ${coin} decided before its dice landed`).toBeLessThan(landedCoin);
+    }
+  });
+
+  it("tumbles only after both reels have locked", () => {
+    // The dice are the answer to an exchange that has already been played. A
+    // throw beginning while a reel is still spinning would be the console
+    // rolling for an action nobody has seen yet.
+    const { frames } = run();
+    for (let coin = 0; coin < exchanges.length; coin++) {
+      const tumbling = frames.findIndex(
+        (f) => f.dice?.coin === coin && f.dice.phase === "tumbling",
+      );
+      expect(tumbling).toBeGreaterThan(-1);
+      const f = frames[tumbling];
+      expect(f.reels.CHALLENGER.locked, `coin ${coin} threw mid-spin`).toBe(true);
+      expect(f.reels.THRONE.locked, `coin ${coin} threw mid-spin`).toBe(true);
+    }
+  });
+
+  it("clears the previous throw when the next exchange spins up", () => {
+    // Otherwise the last coin's faces sit under a board whose reels are still
+    // deciding this one, which reads as a throw for the exchange in progress.
+    const { frames } = run();
+    const cleared = frames.filter((f) => f.dice === null && f.reels.CHALLENGER.spinning);
+    expect(cleared.length).toBe(exchanges.length);
+  });
+});
+
 describe("the reveal never gets ahead of itself", () => {
   /**
    * The one ordering that would spoil a verdict: a medallion landing while a

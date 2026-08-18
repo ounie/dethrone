@@ -143,6 +143,7 @@ export type Group = "Read" | "Stable" | "Fight" | "Market" | "Court" | "Patronag
 /** Kill switches the canon exposes. A flagged route 404s when its feature is off. */
 export type FeatureFlag =
   | "duels"
+  | "rail"
   | "heirMarket"
   | "lordships"
   | "houses"
@@ -179,8 +180,8 @@ export interface Command {
   /** Which field names the spend, for `cents: CALLER_PRICED`. */
   amountField?: string;
   /**
-   * Caller-priced commands whose price the *server* holds (a listing, an
-   * exhibition tier). The operator names a maximum instead; the 402's offer is
+   * Caller-priced commands whose price the *server* holds (a listing, a
+   * patronage tier). The operator names a maximum instead; the 402's offer is
    * refused above it, before anything is signed.
    */
   maxField?: boolean;
@@ -317,10 +318,19 @@ export const COMMANDS: readonly Command[] = [
         options: ["", "active", "completed"],
         optional: true,
       },
+      {
+        name: "mode",
+        label: "Lane",
+        kind: "select",
+        options: ["", "throne", "duel", "undercard", "all"],
+        optional: true,
+        hint: "Empty is throne only, which is what this route returned before it learned the others.",
+      },
+      { name: "limit", label: "Limit", kind: "number", optional: true },
     ],
     note:
-      "Throne matches newest first, with both agents, the pot at stake and the outcome. Filter with " +
-      "status.",
+      "Matches newest first, with both fighters, the arena, the tally and the outcome. Empty lane " +
+      "means throne only; ask for duel, undercard or all by name. Filter with status.",
   },
   {
     id: "character",
@@ -407,6 +417,70 @@ export const COMMANDS: readonly Command[] = [
       { name: "limit", label: "Limit", kind: "number", optional: true },
     ],
     note: "Open listings, anonymous by design. Never cached.",
+  },
+  {
+    id: "cards",
+    label: "House Cards",
+    tier: "free",
+    group: "Read",
+    method: "GET",
+    path: "/api/cards",
+    price: "free",
+    cents: 0,
+    fields: [
+      {
+        name: "status",
+        label: "Scope",
+        kind: "select",
+        options: ["", "all"],
+        optional: true,
+        hint: "Empty is bells still ahead, soonest first. `all` is every public status, newest first.",
+      },
+      { name: "limit", label: "Limit", kind: "number", optional: true },
+    ],
+    note:
+      "The house's own demonstrations: both fighters, their Houses and records, the bell, and the " +
+      "market on the card if it carries one. Drafted and cancelled cards are not published.",
+  },
+  {
+    id: "card",
+    label: "House Card",
+    tier: "free",
+    group: "Read",
+    method: "GET",
+    path: "/api/cards/:id",
+    price: "free",
+    cents: 0,
+    fields: [{ name: "id", label: "Card id" }],
+    note: "One card, in the same shape a row of the list has.",
+  },
+  {
+    id: "rail",
+    label: "The Rail",
+    tier: "free",
+    group: "Market",
+    method: "GET",
+    path: "/api/rail",
+    requiresFlag: "rail",
+    price: "free",
+    cents: 0,
+    note:
+      "Open markets on House Cards — pools, implied prices, open interest. The sides are named by " +
+      "House Cards, which carries the same market on the card it belongs to. Answers " +
+      "`enabled: false` with an empty list when the Rail is closed, never a 404.",
+  },
+  {
+    id: "rail_market",
+    label: "Rail market",
+    tier: "free",
+    group: "Market",
+    method: "GET",
+    path: "/api/rail/:id",
+    requiresFlag: "rail",
+    price: "free",
+    cents: 0,
+    fields: [{ name: "id", label: "Market id" }],
+    note: "One market, its terms, and the x402 command that takes a position on it.",
   },
   {
     id: "duel",
@@ -866,31 +940,6 @@ export const COMMANDS: readonly Command[] = [
     ],
     note: "Commit one side's five actions during the selection window. Free — the challenge fee already paid for the match. Once per side and not revisable: a second call is refused, because revising inside a sealed window is a guessing game rather than a plan. A missed window is filled by a recorded draw, so silence still fights — it just does not choose. Which side you are is decided by the seat, never by you.",
   },
-  {
-    id: "exhibition",
-    label: "Book an exhibition",
-    tier: "paid",
-    group: "Fight",
-    method: "POST",
-    path: "/api/exhibition",
-    price: "tier-priced",
-    cents: CALLER_PRICED,
-    maxField: true,
-    requiresFlag: "undercard",
-    fields: [
-      { name: "fighterA", label: "Fighter A", kind: "number" },
-      { name: "fighterB", label: "Fighter B", kind: "number" },
-      { name: "arenaSlug", label: "Arena", kind: "arena" },
-      {
-        name: "tier",
-        label: "Tier",
-        kind: "select",
-        options: ["verdict", "verdict_poster"],
-      },
-    ],
-    note: "Nothing is at stake — the undercard is an instrument panel, not a prize. The price depends on the tier, so the arena quotes it and you set a maximum.",
-  },
-
   // ───────────────────────────────────────────────────────────────────────────
   // Market
   // ───────────────────────────────────────────────────────────────────────────
@@ -965,6 +1014,52 @@ export const COMMANDS: readonly Command[] = [
       { name: "characterId", label: "Your fighter", kind: "number" },
     ],
     note: "Settles at the listing's posted stake, which the arena holds. Set a maximum and the console refuses a higher quote before signing anything. It carries no plan: your five actions arrive either as a live submission during the window or as the fighter's standing preset, which the close commits for you.",
+  },
+  {
+    id: "take_position",
+    label: "Back a fighter",
+    tier: "paid",
+    group: "Market",
+    method: "POST",
+    path: "/api/rail/:id/position",
+    requiresFlag: "rail",
+    price: "your stake",
+    cents: CALLER_PRICED,
+    maxField: true,
+    fields: [
+      { name: "id", label: "Market id" },
+      {
+        name: "outcome",
+        label: "Side",
+        kind: "select",
+        options: ["a", "b"],
+        hint: "A and B are the card's own slots — House Cards names the fighter in each.",
+      },
+      { name: "amountCents", label: "Stake (cents)", kind: "number" },
+    ],
+    note:
+      "The amount you pay IS your stake — there is no quote to accept and no cash-out. Backers of the " +
+      "winning side split the pool less the rake; your effective price moves until the bell. Settles on " +
+      "the recomputable verdict, never on an opinion of it.",
+  },
+  {
+    id: "my_positions",
+    label: "My positions",
+    tier: "signed",
+    group: "Market",
+    method: "GET",
+    path: "/api/rail/:id/positions/:wallet",
+    requiresFlag: "rail",
+    price: "signed",
+    cents: 0,
+    signScope: "{id}",
+    fields: [
+      { name: "id", label: "Market id" },
+      { name: "wallet", label: "Wallet", hint: ADDRESS_HINT },
+    ],
+    note:
+      "What you hold on one market. The pools are public and who holds what is not, so this one is " +
+      "signed — with the MARKET id as the scope, not a match.",
   },
   {
     id: "cancel_duel",
@@ -1131,8 +1226,7 @@ export const COMMANDS: readonly Command[] = [
     group: "Patronage",
     method: "POST",
     path: "/api/patronage/:tier",
-    // Five fixed prices, chosen by the path segment — the same shape as an
-    // exhibition tier, and priced the same way: the arena quotes, you cap.
+    // Five fixed prices, chosen by the path segment: the arena quotes, you cap.
     price: "tier-priced",
     cents: CALLER_PRICED,
     maxField: true,

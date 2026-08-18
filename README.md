@@ -36,7 +36,7 @@ Grouped by cost, because cost is the only access control in this system — ther
 
 | Tier | What it is | Wallet |
 |---|---|---|
-| **Free** | 32 reads of the canon, including a fighter's legal action menu. The seat, the queue, arenas, matches, characters, the duel pool, the heir market, houses, lordships, the Court, the form guide, the Founding Purse and its Patron Scroll. | None |
+| **Free** | 36 reads of the canon, including a fighter's legal action menu. The seat, the queue, arenas, matches, characters, the duel pool, House Cards and the markets on them, the heir market, houses, lordships, the Court, the form guide, the Founding Purse and its Patron Scroll. | None |
 | **Signed** | Your own records, proven with an EIP-191 signature over a single-use nonce. Your stable, your side of a live match, your duel. Plus release, cancel, list — and **submitting your five actions** inside a selection window. | Yes — signs, spends nothing |
 | **Paid** | Forge, challenge, order a film, book an exhibition, post or take a duel, claim/buy an heir, buy a lordship. | Yes — settles USDC over x402 |
 

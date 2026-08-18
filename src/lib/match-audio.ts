@@ -50,6 +50,17 @@ export interface MatchSound {
   /** The verdict, major for the throne and minor for a challenger. */
   finale(winner: string): void;
   setMuted(muted: boolean): void;
+  /**
+   * Build and resume the context NOW, from inside a user gesture, silently.
+   *
+   * A context created off-gesture starts suspended and cannot resume itself, so
+   * a verdict that arrives while the operator watches — the one playback nobody
+   * pressed a button for — would be mute however the toggle reads. Spending the
+   * first click anywhere in the console on this is what lets the sound
+   * preference default to on without the toggle lying. It plays nothing:
+   * priming is permission, not sound.
+   */
+  prime(): void;
 }
 
 /** Everything a no-audio environment gets: a complete object that does nothing. */
@@ -66,6 +77,7 @@ function silent(): MatchSound {
     drum: noop,
     finale: noop,
     setMuted: noop,
+    prime: noop,
   };
 }
 
@@ -410,6 +422,13 @@ export function createMatchSound(): MatchSound {
 
     setMuted(next) {
       muted = next;
+    },
+
+    /* `ensure()` builds the context and resumes it if the browser handed it
+       back suspended. Deliberately not gated on `muted`: the point is to hold
+       the permission for a playback that has not started yet. */
+    prime() {
+      ensure();
     },
   };
 }

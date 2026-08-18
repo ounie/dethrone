@@ -15,44 +15,102 @@ const THRONE = {
   matches: [
     {
       id: "mat_1",
+      mode: "throne",
       status: "completed",
       outcome: "DEFENDED",
+      winner: "THRONE",
+      tally: { challenger: 2, throne: 3 },
       potAtStakeUsdc: "1.300000",
+      arenaName: "The Drowned Coliseum",
       champion: { displayName: "0xAAA…1", walletAddress: "0xAAA1" },
       challenger: { displayName: "0xBBB…2", walletAddress: "0xbbb2" },
+      throneFighterName: "Ishlial the Unquiet",
+      challengerFighterName: "Mortheth the Undrowned",
       endedAt: "2026-08-13T17:42:38.633Z",
       createdAt: "2026-08-13T17:38:02.452Z",
     },
-    { id: "mat_2", champion: {}, challenger: {} },
+    { id: "mat_2", mode: "throne", champion: {}, challenger: {} },
     // No id: cannot be opened, so it is not a row. Rendering it would put a
     // control on screen that can only fail.
-    { status: "completed", champion: {}, challenger: {} },
+    { status: "completed", mode: "throne", champion: {}, challenger: {} },
   ],
 };
 
 describe("rows are read, never invented", () => {
   it("narrows a throne list", () => {
-    const rows = readMatchRows(THRONE, "throne");
+    const rows = readMatchRows(THRONE);
     expect(rows).toHaveLength(2);
     expect(rows[0].id).toBe("mat_1");
     expect(rows[0].kind).toBe("throne");
     expect(rows[0].outcome).toBe("DEFENDED");
     expect(rows[0].championAddress).toBe("0xAAA1");
+    // The FIGHTER, not the owning agent — they are different facts and the row
+    // renders the name beside a portrait.
+    expect(rows[0].championFighterName).toBe("Ishlial the Unquiet");
+    expect(rows[0].tally).toEqual({ challenger: 2, throne: 3 });
+    expect(rows[0].arenaName).toBe("The Drowned Coliseum");
   });
 
   it("drops a row with no id", () => {
-    expect(readMatchRows(THRONE, "throne").map((r) => r.id)).toEqual(["mat_1", "mat_2"]);
+    expect(readMatchRows(THRONE).map((r) => r.id)).toEqual(["mat_1", "mat_2"]);
   });
 
   it("survives junk without throwing", () => {
     for (const junk of [null, undefined, 0, "no", [], {}, { matches: "nope" }]) {
-      expect(readMatchRows(junk, "throne")).toEqual([]);
+      expect(readMatchRows(junk)).toEqual([]);
     }
   });
 
-  it("marks duels as duels, so the filter is a fact and not a guess", () => {
-    const rows = readMatchRows({ duels: [{ id: "duel_1" }] }, "duel");
-    expect(rows[0].kind).toBe("duel");
+  it("reads the lane off the row rather than off the request", () => {
+    /*
+      The bug this replaces. `readMatchRows` used to take a `kind` argument and
+      stamp it on everything it produced, so a row was a duel because of which
+      endpoint answered — and the Duel tab was filled from `/api/duels/pool`,
+      which lists OPEN listings and loses a duel the moment it is taken. The tab
+      could only ever be empty of the thing it was named after.
+    */
+    const rows = readMatchRows({
+      matches: [
+        { id: "mat_d", mode: "duel" },
+        { id: "mat_t", mode: "throne" },
+        { id: "mat_x", mode: "exhibition" },
+      ],
+    });
+    expect(rows.map((r) => r.kind)).toEqual(["duel", "throne", "undercard"]);
+  });
+
+  it("never folds an UNRECOGNISED lane into throne", () => {
+    // A lane the arena named and this client has not been taught goes to the
+    // conservative bucket, not the money-ordered one: a $0.15 exhibition in a
+    // throne list is the misread §12.3 exists to prevent.
+    const rows = readMatchRows({ matches: [{ id: "m", mode: "gauntlet" }] });
+    expect(rows.map((r) => r.kind)).toEqual(["undercard"]);
+  });
+
+  it("reads an ABSENT lane as throne, because that route had no other", () => {
+    /*
+      The bug this pins, seen on screen: against an arena that predates the
+      `mode` field, every row came back without one and this client rendered
+      all eight throne matches as "UNDERCARD" — a label it invented, on the
+      column whose only job is to say what a row is.
+
+      Absent is not unrecognised. The older `/api/matches` selected
+      `throne_matches`, so a response with no mode on it is structurally
+      incapable of carrying anything but a throne match.
+    */
+    const rows = readMatchRows({ matches: [{ id: "n" }, { id: "o", mode: null }] });
+    expect(rows.map((r) => r.kind)).toEqual(["throne", "throne"]);
+  });
+
+  it("refuses a half-read tally rather than rendering a blank in a score", () => {
+    const rows = readMatchRows({
+      matches: [
+        { id: "a", tally: { challenger: 3 } },
+        { id: "b", tally: null },
+        { id: "c", tally: { challenger: 0, throne: 5 } },
+      ],
+    });
+    expect(rows.map((r) => r.tally)).toEqual([null, null, { challenger: 0, throne: 5 }]);
   });
 });
 
@@ -69,7 +127,15 @@ function blank(id: string): MatchRow {
     kind: "throne",
     status: null,
     outcome: null,
+    winner: null,
+    tally: null,
     potUsdc: null,
+    arenaName: null,
+    championFighterName: null,
+    challengerFighterName: null,
+    championImageUrl: null,
+    challengerImageUrl: null,
+    demonstration: false,
     championName: null,
     championAddress: null,
     challengerName: null,
